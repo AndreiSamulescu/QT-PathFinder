@@ -49,7 +49,7 @@ void MainWindow::mousePressEvent(QMouseEvent *event)
             // Considerăm click pe un nod existent (selectare)
             if (!selectedNodes.contains(existingNode)) {
                 selectedNodes.append(existingNode);
-                existingNode->setBrush(QBrush(selectedColor)); // marcăm cu culoarea selectată
+                existingNode->setBrush(QBrush(Qt::green)); // ✔ culoare verde când e selectat
 
                 if (selectedNodes.size() == 2) {
                     // Creăm un edge între cele două noduri selectate
@@ -58,6 +58,10 @@ void MainWindow::mousePressEvent(QMouseEvent *event)
 
                     QGraphicsLineItem *edge = scene->addLine(QLineF(p1, p2), QPen(Qt::black));
                     edges.append(qMakePair(edge, QPair<QGraphicsEllipseItem*, QGraphicsEllipseItem*>(selectedNodes[0], selectedNodes[1])));
+
+                    // ✔ Resetăm culoarea nodurilor înapoi la culoarea default (roșu)
+                    selectedNodes[0]->setBrush(QBrush(selectedColor));
+                    selectedNodes[1]->setBrush(QBrush(selectedColor));
 
                     selectedNodes.clear();
                 }
@@ -87,6 +91,7 @@ void MainWindow::mousePressEvent(QMouseEvent *event)
         }
     }
 }
+
 
 MainWindow::~MainWindow()
 {
