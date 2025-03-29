@@ -232,7 +232,7 @@ void MainWindow::updateCurrentAlgorithm(int index)
 
 void MainWindow::runAlgorithm()
 {
-    if (nodeCounter < 1) {
+    if (nodeCounter <= 2) {
         showWarning("Nu există noduri în listă!");
         return;
     }
