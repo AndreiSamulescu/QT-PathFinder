@@ -6,7 +6,8 @@
 #include <QJsonArray>
 #include <QJsonObject>
 #include <QDebug>
-
+#include <QInputDialog>
+#include <QMessageBox>
 MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent)
     , ui(new Ui::MainWindow)
@@ -23,7 +24,8 @@ MainWindow::MainWindow(QWidget *parent)
     ui->graphicsView->setScene(scene);
     scene->setSceneRect(0, 0, ui->graphicsView->width(), ui->graphicsView->height());
     ui->graphicsView->setRenderHint(QPainter::Antialiasing);
-
+    connect(ui->algorithmComboBox, SIGNAL(currentIndexChanged(int)), this, SLOT(updateCurrentAlgorithm(int)));
+    connect(ui->runAlgorithmButton, SIGNAL(clicked()), this, SLOT(runAlgorithm()));
     ui->graphicsView->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
     ui->graphicsView->setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
     ui->graphicsView->setDragMode(QGraphicsView::NoDrag);
@@ -219,4 +221,90 @@ void MainWindow::importData() {
         text->setPos(circleRect.x() + circleRect.width()/2 - textRect.width()/2,
                      circleRect.y() + circleRect.height()/2 - textRect.height()/2);
     }
+}
+
+void MainWindow::updateCurrentAlgorithm(int index)
+{
+    // Deocamdată, doar actualizăm titlul ferestrei cu algoritmul curent
+    QString algorithmName = ui->algorithmComboBox->itemText(index);
+    setWindowTitle("MainWindow - Current Algorithm: " + algorithmName);
+}
+
+void MainWindow::runAlgorithm()
+{
+    if (nodeCounter < 1) {
+        showWarning("Nu există noduri în listă!");
+        return;
+    }
+
+    bool ok;
+    int from = QInputDialog::getInt(this, "Introducere Noduri", "De la:", 1, 1, nodeCounter - 1, 1, &ok);
+    if (!ok) return;
+
+    int to = QInputDialog::getInt(this, "Introducere Noduri", "Până la:", 1, 1, nodeCounter - 1, 1, &ok);
+    if (!ok) return;
+
+    if (!validateNodes(from, to)) return;
+
+    QString selectedAlgorithm = ui->algorithmComboBox->currentText();
+
+    if (selectedAlgorithm == "Generic BFS") {
+        runGenericAlgorithm();
+    }
+    else if (selectedAlgorithm == "Ford-Fulkerson") {
+        runFordFulkersonAlgorithm();
+    }
+    else if (selectedAlgorithm == "Edmonds-Karp") {
+        runEdmondsKarpAlgorithm();
+    }
+}
+
+void MainWindow::runGenericAlgorithm()
+{
+    logDebugMessage("Running Generic Algorithm");
+    qDebug() << "Running Generic Algorithm";
+    // Implementare pentru algoritmul Generic
+}
+
+void MainWindow::runFordFulkersonAlgorithm()
+{
+    logDebugMessage("Running Ford-Fulkerson Algorithm");
+    qDebug() << "Running Ford-Fulkerson Algorithm";
+    // Implementare pentru algoritmul Ford-Fulkerson
+}
+
+void MainWindow::runEdmondsKarpAlgorithm()
+{
+    logDebugMessage("Running Edmonds-Karp Algorithm");
+    qDebug() << "Running Edmonds-Karp Algorithm";
+    // Implementare pentru algoritmul Edmonds-Karp
+}
+void MainWindow::logDebugMessage(const QString &message)
+{
+    QFile file("debug.log");
+    if (file.open(QIODevice::Append | QIODevice::Text)) {
+        QTextStream out(&file);
+        out << QDateTime::currentDateTime().toString("[yyyy-MM-dd HH:mm:ss] ") << message << "\n";
+        file.close();
+    }
+}
+
+bool MainWindow::validateNodes(int from, int to)
+{
+    if (nodeCounter < 1) {
+        showWarning("Nu există noduri disponibile!");
+        return false;
+    }
+
+    if (from < 1 || from >= nodeCounter || to < 1 || to >= nodeCounter) {
+        showWarning("Unul dintre nodurile introduse nu există!");
+        return false;
+    }
+
+    return true;
+}
+
+void MainWindow::showWarning(const QString &message)
+{
+    QMessageBox::warning(this, "Eroare", message);
 }

@@ -49,6 +49,8 @@ public:
 
 private slots:
     void importData();  // Slot pentru importul datelor
+    void runAlgorithm();
+    void updateCurrentAlgorithm(int index);
 
 private:
     Ui::MainWindow *ui;
@@ -60,9 +62,15 @@ private:
     QList<QPair<QGraphicsLineItem*, QPair<QGraphicsEllipseItem*, QGraphicsEllipseItem*>>> edges;
     int nodeCounter = 1;
     QList<ArrowData> arrowDataList; // Stores all arrow information
-
+    bool validateNodes(int from, int to);
+    void showWarning(const QString &message);
     bool addArrowHead(QGraphicsLineItem* edge, QPointF start, QPointF end);
     bool edgeExists(QGraphicsEllipseItem* node1, QGraphicsEllipseItem* node2);
+    void runGenericAlgorithm();
+    void runFordFulkersonAlgorithm();
+    void runEdmondsKarpAlgorithm();
+    void logDebugMessage(const QString &message);
+
 };
 
 #endif // MAINWINDOW_H
