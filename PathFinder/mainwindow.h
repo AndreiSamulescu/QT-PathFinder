@@ -12,9 +12,26 @@
 #include <QPen>
 #include <QBrush>
 #include <QtMath>
+#include "custommodal.h"
+#include <QMessageBox>
+
+struct ArrowData {
+    QPointF startPoint;
+    QPointF endPoint;
+    double distance;    // Distanța dintre puncte
+    double consumption; // Consumul pe acest segment
+    QGraphicsItemGroup* visualItem; // Referință la obiectele grafice
+
+    // Constructor pentru inițializare facilă
+    ArrowData(QPointF start, QPointF end, double dist, double cons, QGraphicsItemGroup* item)
+        : startPoint(start), endPoint(end), distance(dist), consumption(cons), visualItem(item) {}
+};
 
 QT_BEGIN_NAMESPACE
 namespace Ui {
+
+
+
 class MainWindow;
 }
 QT_END_NAMESPACE
@@ -42,8 +59,9 @@ private:
     void setupUi(QMainWindow *MainWindow);
     QList<QPair<QGraphicsLineItem*, QPair<QGraphicsEllipseItem*, QGraphicsEllipseItem*>>> edges;
     int nodeCounter = 1;
+    QList<ArrowData> arrowDataList; // Stores all arrow information
 
-    void addArrowHead(QGraphicsLineItem* edge, QPointF start, QPointF end);
+    bool addArrowHead(QGraphicsLineItem* edge, QPointF start, QPointF end);
     bool edgeExists(QGraphicsEllipseItem* node1, QGraphicsEllipseItem* node2);
 };
 
