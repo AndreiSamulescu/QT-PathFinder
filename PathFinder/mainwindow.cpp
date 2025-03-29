@@ -8,6 +8,8 @@
 #include <QDebug>
 #include <QInputDialog>
 #include <QMessageBox>
+#include <QQueue>
+
 MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent)
     , ui(new Ui::MainWindow)
@@ -249,7 +251,7 @@ void MainWindow::runAlgorithm()
     QString selectedAlgorithm = ui->algorithmComboBox->currentText();
 
     if (selectedAlgorithm == "Generic BFS") {
-        runGenericAlgorithm();
+        runGenericAlgorithm(from, to);
     }
     else if (selectedAlgorithm == "Ford-Fulkerson") {
         runFordFulkersonAlgorithm();
@@ -257,13 +259,6 @@ void MainWindow::runAlgorithm()
     else if (selectedAlgorithm == "Edmonds-Karp") {
         runEdmondsKarpAlgorithm();
     }
-}
-
-void MainWindow::runGenericAlgorithm()
-{
-    logDebugMessage("Running Generic Algorithm");
-    qDebug() << "Running Generic Algorithm";
-    // Implementare pentru algoritmul Generic
 }
 
 void MainWindow::runFordFulkersonAlgorithm()
@@ -307,4 +302,92 @@ bool MainWindow::validateNodes(int from, int to)
 void MainWindow::showWarning(const QString &message)
 {
     QMessageBox::warning(this, "Eroare", message);
+}
+
+void MainWindow::runGenericAlgorithm(int startNode, int endNode)
+{
+    runBFS(startNode, endNode);
+}
+
+void MainWindow::runBFS(int startNode, int endNode)
+{
+    if (nodeCounter < 1) {
+        showWarning("Nu există noduri disponibile!");
+        return;
+    }
+
+    // Verificăm dacă nodurile sunt valide
+    if (!validateNodes(startNode, endNode)) return;
+
+    // BFS pentru găsirea celei mai scurte căi
+    QQueue<int> queue;  // Coada BFS
+    QSet<int> visited;  // Setul pentru a urmări nodurile vizitate
+    QMap<int, int> parentMap; // Harta pentru a urmări nodul părinte
+
+    queue.enqueue(startNode);
+    visited.insert(startNode);
+
+    bool found = false;
+
+    while (!queue.isEmpty()) {
+        int currentNode = queue.dequeue();
+
+        // Verificăm dacă am ajuns la nodul final
+        if (currentNode == endNode) {
+            found = true;
+            break;
+        }
+
+        // Căutăm vecinii nodului curent
+        for (const ArrowData &arrow : arrowDataList) {
+            // poate folosind coordonatele startPoint și endPoint
+            int neighborNode = (arrow.startPoint.x() == currentNode) ? arrow.endPoint.x() : -1;
+            if (neighborNode != -1 && !visited.contains(neighborNode)) {
+                queue.enqueue(neighborNode);
+                visited.insert(neighborNode);
+                parentMap[neighborNode] = currentNode;
+            }
+        }
+    }
+
+    if (found) {
+        // Reconstruim traseul de la startNode la endNode
+        QList<int> path;
+        int current = endNode;
+        while (current != startNode) {
+            path.prepend(current);
+            current = parentMap[current];
+        }
+        path.prepend(startNode);
+
+        // Vizualizăm traseul pe hartă
+        visualizePath(path);
+    } else {
+        showWarning("Nu s-a găsit o cale între nodurile specificate.");
+    }
+}
+
+void MainWindow::visualizePath(const QList<int> &path)
+{
+    if (path.isEmpty()) return;
+
+    // Vizualizăm traseul pe hartă (exemplu simplu cu linii)
+    QGraphicsScene *scene = ui->graphicsView->scene();
+
+    for (int i = 0; i < path.size() - 1; ++i) {
+        int from = path[i];
+        int to = path[i + 1];
+
+        // Căutăm săgeata corespunzătoare
+        for (const ArrowData &arrow : arrowDataList) {
+            if (arrow.startPoint.x() == from && arrow.endPoint.x() == to) {
+                // Vizualizăm linia în funcție de săgeata
+                QGraphicsLineItem *lineItem = new QGraphicsLineItem(arrow.startPoint.x(), arrow.startPoint.y(),
+                                                                    arrow.endPoint.x(), arrow.endPoint.y());
+                lineItem->setPen(QPen(Qt::red, 3)); // Linia roșie pentru traseu
+                scene->addItem(lineItem);
+                break;
+            }
+        }
+    }
 }

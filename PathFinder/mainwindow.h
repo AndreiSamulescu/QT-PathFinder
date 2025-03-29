@@ -70,7 +70,8 @@ private:
     void runFordFulkersonAlgorithm();
     void runEdmondsKarpAlgorithm();
     void logDebugMessage(const QString &message);
-
+    void visualizePath(const QList<int> &path);
+    void runBFS(int startNode, int endNode);
 };
 
 #endif // MAINWINDOW_H
