@@ -6,6 +6,7 @@ class Node
 private:
     double m_x;
     double m_y;
+
 public:
     Node();
     Node(double x, double y);

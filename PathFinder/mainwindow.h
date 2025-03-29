@@ -21,11 +21,14 @@ struct ArrowData {
     double distance;    // Distanța dintre puncte
     double consumption; // Consumul pe acest segment
     QGraphicsItemGroup* visualItem; // Referință la obiectele grafice
+    int nodeStartID;   // ID-ul nodului de start
+    int nodeEndID;     // ID-ul nodului de sfârșit
 
     // Constructor pentru inițializare facilă
-    ArrowData(QPointF start, QPointF end, double dist, double cons, QGraphicsItemGroup* item)
-        : startPoint(start), endPoint(end), distance(dist), consumption(cons), visualItem(item) {}
+    ArrowData(QPointF start, QPointF end, double dist, double cons, QGraphicsItemGroup* item, int startID, int endID)
+        : startPoint(start), endPoint(end), distance(dist), consumption(cons), visualItem(item), nodeStartID(startID), nodeEndID(endID) {}
 };
+
 
 struct ArrowNode{
     int ID;

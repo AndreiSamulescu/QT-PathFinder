@@ -80,15 +80,24 @@ void MainWindow::mousePressEvent(QMouseEvent *event)
                 }
             }
         } else {
+            // Crearea cercului
             QGraphicsEllipseItem *circle = scene->addEllipse(circleRect, QPen(Qt::black), QBrush(selectedColor));
+
             // Creează textul ca item copil al cercului
             QGraphicsTextItem *text = new QGraphicsTextItem(QString::number(nodeCounter), circle);
             text->setFont(QFont("Arial", 10, QFont::Bold));
             text->setDefaultTextColor(Qt::black);
+
             // Centrare text în interiorul cercului
             QRectF textRect = text->boundingRect();
-            text->setPos(circleRect.x() + circleRect.width()/2 - textRect.width()/2,
-                         circleRect.y() + circleRect.height()/2 - textRect.height()/2);
+            text->setPos(circleRect.x() + circleRect.width() / 2 - textRect.width() / 2,
+                         circleRect.y() + circleRect.height() / 2 - textRect.height() / 2);
+
+            // Crearea unui obiect ArrowNode cu ID-ul nodului și poziția acestuia
+            ArrowNode newNode(scenePos, nodeCounter);
+            arrowNodes.append(newNode);  // Adăugăm ArrowNode în lista arrowNodes
+
+            // Crește contorul pentru următorul nod
             nodeCounter++;
         }
     } else if (event->button() == Qt::RightButton) {
@@ -160,11 +169,39 @@ bool MainWindow::addArrowHead(QGraphicsLineItem* edge, QPointF start, QPointF en
     group->setFlag(QGraphicsItem::ItemIsSelectable, true);
     group->setFlag(QGraphicsItem::ItemIsMovable, true);
 
-    // Salvare în listă
-    arrowDataList.append(ArrowData(start, end, distance, consumption, group));
+    // Găsim ID-urile nodurilor care formează această săgeată
+    int startNodeID = -1;
+    int endNodeID = -1;
+
+    // Căutăm nodul de start în arrowNodes
+    for (const ArrowNode& node : arrowNodes) {
+        if (QLineF(node.connection, start).length() < 5.0) {  // Dacă punctul de conexiune e apropiat
+            startNodeID = node.ID;
+            break;
+        }
+    }
+
+    // Căutăm nodul de final în arrowNodes
+    for (const ArrowNode& node : arrowNodes) {
+        if (QLineF(node.connection, end).length() < 5.0) {  // Dacă punctul de conexiune e apropiat
+            endNodeID = node.ID;
+            break;
+        }
+    }
+
+    // Verificăm dacă am găsit nodurile
+    if (startNodeID == -1 || endNodeID == -1) {
+        qDebug() << "Nu am găsit nodurile corespunzătoare.";
+        return false;
+    }
+
+    // Salvăm săgeata în lista de date cu ID-urile nodurilor
+    arrowDataList.append(ArrowData(start, end, distance, consumption, group, startNodeID, endNodeID));
 
     return true;
 }
+
+
 
 
 bool MainWindow::edgeExists(QGraphicsEllipseItem* node1, QGraphicsEllipseItem* node2) {
@@ -311,83 +348,67 @@ void MainWindow::runGenericAlgorithm(int startNode, int endNode)
 
 void MainWindow::runBFS(int startNode, int endNode)
 {
-    if (nodeCounter < 1) {
-        showWarning("Nu există noduri disponibile!");
+    // Verificăm dacă startNode și endNode sunt valabile
+    if (startNode == endNode) {
+        qDebug() << "Start node and end node are the same.";
         return;
     }
 
-    // Verificăm dacă nodurile sunt valide
-    if (!validateNodes(startNode, endNode)) return;
+    // Verificăm dacă există noduri în lista arrowNodes
+    if (arrowNodes.isEmpty()) {
+        qDebug() << "No nodes available.";
+        return;
+    }
 
-    // BFS pentru găsirea celei mai scurte căi
-    QQueue<int> queue;  // Coada BFS
-    QSet<int> visited;  // Setul pentru a urmări nodurile vizitate
-    QMap<int, int> parentMap; // Harta pentru a urmări nodul părinte
+    // Coada pentru BFS
+    QQueue<int> queue; // Stocăm ID-urile nodurilor de explorat
+    QMap<int, int> parentMap; // Harta de părinți pentru a reconstrui calea
+    QSet<int> visitedNodes; // Set pentru a marca nodurile vizitate
 
+    // Adăugăm startNode în coadă
     queue.enqueue(startNode);
-    visited.insert(startNode);
+    visitedNodes.insert(startNode);
 
-    bool found = false;
-
+    // BFS
     while (!queue.isEmpty()) {
         int currentNode = queue.dequeue();
 
-        // Verificăm dacă am ajuns la nodul final
+        // Verificăm dacă am ajuns la endNode
         if (currentNode == endNode) {
-            found = true;
-            break;
+            qDebug() << "Path found from node " << startNode << " to node " << endNode;
+
+            // Reconstruim calea de la endNode la startNode
+            QList<int> path;
+            while (parentMap.contains(currentNode)) {
+                path.prepend(currentNode);
+                currentNode = parentMap[currentNode];
+            }
+            path.prepend(startNode); // Adăugăm și startNode la începutul căii
+
+            // Afișăm calea
+            qDebug() << "Path: " << path;
+            return;
         }
 
-        // Căutăm vecinii nodului curent
-        for (const ArrowData &arrow : arrowDataList) {
-            // poate folosind coordonatele startPoint și endPoint
-            int neighborNode = (arrow.startPoint.x() == currentNode) ? arrow.endPoint.x() : -1;
-            if (neighborNode != -1 && !visited.contains(neighborNode)) {
-                queue.enqueue(neighborNode);
-                visited.insert(neighborNode);
-                parentMap[neighborNode] = currentNode;
+        // Găsim vecinii nodului curent (conexiuni orientate)
+        for (const ArrowData &arrowData : arrowDataList) {
+            // Verificăm dacă nodul curent este începutul unei săgeți și nodul final nu a fost vizitat
+            if (arrowData.nodeStartID == currentNode && !visitedNodes.contains(arrowData.nodeEndID)) {
+                // Adăugăm vecinul în coadă și îl marcăm ca vizitat
+                queue.enqueue(arrowData.nodeEndID);
+                visitedNodes.insert(arrowData.nodeEndID);
+                parentMap[arrowData.nodeEndID] = currentNode; // Setăm părintele
             }
         }
     }
 
-    if (found) {
-        // Reconstruim traseul de la startNode la endNode
-        QList<int> path;
-        int current = endNode;
-        while (current != startNode) {
-            path.prepend(current);
-            current = parentMap[current];
-        }
-        path.prepend(startNode);
-
-        // Vizualizăm traseul pe hartă
-        visualizePath(path);
-    } else {
-        showWarning("Nu s-a găsit o cale între nodurile specificate.");
-    }
+    // Dacă am ajuns aici, înseamnă că nu am găsit o cale
+    qDebug() << "No path found between node " << startNode << " and node " << endNode;
 }
+
+
 
 void MainWindow::visualizePath(const QList<int> &path)
 {
-    if (path.isEmpty()) return;
 
-    // Vizualizăm traseul pe hartă (exemplu simplu cu linii)
-    QGraphicsScene *scene = ui->graphicsView->scene();
-
-    for (int i = 0; i < path.size() - 1; ++i) {
-        int from = path[i];
-        int to = path[i + 1];
-
-        // Căutăm săgeata corespunzătoare
-        for (const ArrowData &arrow : arrowDataList) {
-            if (arrow.startPoint.x() == from && arrow.endPoint.x() == to) {
-                // Vizualizăm linia în funcție de săgeata
-                QGraphicsLineItem *lineItem = new QGraphicsLineItem(arrow.startPoint.x(), arrow.startPoint.y(),
-                                                                    arrow.endPoint.x(), arrow.endPoint.y());
-                lineItem->setPen(QPen(Qt::red, 3)); // Linia roșie pentru traseu
-                scene->addItem(lineItem);
-                break;
-            }
-        }
-    }
 }
