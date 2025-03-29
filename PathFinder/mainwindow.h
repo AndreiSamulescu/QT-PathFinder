@@ -69,7 +69,7 @@ private:
     QList<QPair<QGraphicsLineItem*, QPair<QGraphicsEllipseItem*, QGraphicsEllipseItem*>>> edges;
     int nodeCounter = 1;
     QList<ArrowData> arrowDataList; // Stores all arrow information
-    QList<ArrowNode> allNodes; // Stores all arrow information
+    QList<ArrowNode> arrowNodes; // Stores all arrow information
     bool validateNodes(int from, int to);
     void showWarning(const QString &message);
     bool addArrowHead(QGraphicsLineItem* edge, QPointF start, QPointF end);
