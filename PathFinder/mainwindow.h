@@ -79,7 +79,7 @@ private:
     bool edgeExists(QGraphicsEllipseItem* node1, QGraphicsEllipseItem* node2);
     void runGenericAlgorithm(int startNode, int endNode);
     void runFordFulkersonAlgorithm(int startNode, int endNode);
-    void runEdmondsKarpAlgorithm();
+    void runEdmondsKarpAlgorithm(int startNode, int endNode);
     void logDebugMessage(const QString &message);
     void visualizePath(const QList<int> &path);
     void runBFS(int startNode, int endNode);

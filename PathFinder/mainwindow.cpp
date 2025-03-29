@@ -294,7 +294,7 @@ void MainWindow::runAlgorithm()
         runFordFulkersonAlgorithm(from, to);
     }
     else if (selectedAlgorithm == "Edmonds-Karp") {
-        runEdmondsKarpAlgorithm();
+        runEdmondsKarpAlgorithm(from, to);
     }
 }
 
@@ -390,12 +390,97 @@ void MainWindow::runFordFulkersonAlgorithm(int startNode, int endNode)
 
 
 
-void MainWindow::runEdmondsKarpAlgorithm()
+void MainWindow::runEdmondsKarpAlgorithm(int startNode, int endNode)
 {
     logDebugMessage("Running Edmonds-Karp Algorithm");
     qDebug() << "Running Edmonds-Karp Algorithm";
-    // Implementare pentru algoritmul Edmonds-Karp
+
+    // Verificăm dacă nodurile startNode și endNode sunt valide
+    int numNodes = arrowNodes.size();  // Sau orice număr de noduri din graful tău
+    if (startNode < 1 || endNode < 1 || startNode > numNodes || endNode > numNodes) {
+        qDebug() << "Invalid start or end node.";
+        return;
+    }
+
+    // Conversie: Nodurile 1, 2, 3... sunt mapate la indicii 0, 1, 2...
+    int source = startNode - 1;  // Nodul sursă (indexat de la 0)
+    int sink = endNode - 1;      // Nodul destinație (indexat de la 0)
+
+    // Matricea de capacități și fluxuri
+    QVector<QVector<int>> capacity(numNodes, QVector<int>(numNodes, 0));  // Capacitățile pe muchii
+    QVector<QVector<int>> flow(numNodes, QVector<int>(numNodes, 0));      // Fluxurile pe muchii
+
+    // Inițializăm matricea de capacități
+    for (const ArrowData &arrowData : arrowDataList) {
+        int startID = arrowData.nodeStartID - 1;  // Conversie la indicele din listă
+        int endID = arrowData.nodeEndID - 1;      // Conversie la indicele din listă
+        int cap = arrowData.distance;              // Capacitatea pe muchie
+
+        capacity[startID][endID] = cap;  // Setăm capacitatea pentru muchie
+    }
+
+    // Algoritmul Edmonds-Karp
+    int maxFlow = 0;  // Fluxul maxim
+
+    // Căutăm un drum augmentator folosind BFS
+    while (true) {
+        QVector<int> parent(numNodes, -1);  // Harta părinților pentru reconstrucția drumului
+        QVector<bool> visited(numNodes, false);  // Set pentru vizitarea nodurilor
+        QQueue<int> queue;
+
+        queue.enqueue(source);
+        visited[source] = true;
+
+        // BFS pentru a găsi un drum augmentator
+        bool pathFound = false;
+        while (!queue.isEmpty()) {
+            int currentNode = queue.dequeue();
+
+            // Verificăm vecinii
+            for (int neighbor = 0; neighbor < numNodes; ++neighbor) {
+                // Dacă există capacitate reziduală și nu am vizitat deja vecinul
+                if (!visited[neighbor] && capacity[currentNode][neighbor] - flow[currentNode][neighbor] > 0) {
+                    queue.enqueue(neighbor);
+                    visited[neighbor] = true;
+                    parent[neighbor] = currentNode;
+
+                    if (neighbor == sink) {
+                        pathFound = true;
+                        break;
+                    }
+                }
+            }
+
+            if (pathFound) break;
+        }
+
+        // Dacă nu am găsit niciun drum augmentator, înseamnă că fluxul maxim a fost găsit
+        if (!pathFound) break;
+
+        // Găsim capacitatea minimă pe drumul augmentator
+        int pathFlow = INT_MAX;
+        int currentNode = sink;
+        while (currentNode != source) {
+            int prevNode = parent[currentNode];
+            pathFlow = std::min(pathFlow, capacity[prevNode][currentNode] - flow[prevNode][currentNode]);
+            currentNode = prevNode;
+        }
+
+        // Actualizăm fluxurile pe drum
+        currentNode = sink;
+        while (currentNode != source) {
+            int prevNode = parent[currentNode];
+            flow[prevNode][currentNode] += pathFlow;
+            flow[currentNode][prevNode] -= pathFlow;  // Flux invers (pentru fluxul de retur)
+            currentNode = prevNode;
+        }
+
+        maxFlow += pathFlow;
+    }
+
+    qDebug() << "Max flow from node " << startNode << " to node " << endNode << ": " << maxFlow;
 }
+
 void MainWindow::logDebugMessage(const QString &message)
 {
     QFile file("debug.log");
