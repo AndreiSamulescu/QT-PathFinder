@@ -78,7 +78,7 @@ private:
     bool addArrowHead(QGraphicsLineItem* edge, QPointF start, QPointF end);
     bool edgeExists(QGraphicsEllipseItem* node1, QGraphicsEllipseItem* node2);
     void runGenericAlgorithm(int startNode, int endNode);
-    void runFordFulkersonAlgorithm();
+    void runFordFulkersonAlgorithm(int startNode, int endNode);
     void runEdmondsKarpAlgorithm();
     void logDebugMessage(const QString &message);
     void visualizePath(const QList<int> &path);
