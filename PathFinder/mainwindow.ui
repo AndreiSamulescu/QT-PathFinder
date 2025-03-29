@@ -87,6 +87,19 @@
     </widget>
     <widget class="QWidget" name="page_4">
      <widget class="QGraphicsView" name="graphicsView">
+	 <widget class="QPushButton" name="importDataButton">
+ <property name="geometry">
+  <rect>
+   <x>10</x>
+   <y>10</y>
+   <width>100</width>
+   <height>30</height>
+  </rect>
+ </property>
+ <property name="text">
+  <string>ImportData</string>
+ </property>
+</widget>
       <property name="geometry">
        <rect>
         <x>0</x>
