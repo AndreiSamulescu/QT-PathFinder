@@ -18,15 +18,14 @@
 struct ArrowData {
     QPointF startPoint;
     QPointF endPoint;
-    double distance;    // Distanța dintre puncte
-    double consumption; // Consumul pe acest segment
-    QGraphicsItemGroup* visualItem; // Referință la obiectele grafice
-    int nodeStartID;   // ID-ul nodului de start
-    int nodeEndID;     // ID-ul nodului de sfârșit
+    double distance;
+    double consumption;
+    QGraphicsItemGroup* group;
+    int nodeStartID;
+    int nodeEndID;
 
-    // Constructor pentru inițializare facilă
-    ArrowData(QPointF start, QPointF end, double dist, double cons, QGraphicsItemGroup* item, int startID, int endID)
-        : startPoint(start), endPoint(end), distance(dist), consumption(cons), visualItem(item), nodeStartID(startID), nodeEndID(endID) {}
+    ArrowData(QPointF s, QPointF e, double d, double c, QGraphicsItemGroup* g, int sID, int eID)
+        : startPoint(s), endPoint(e), distance(d), consumption(c), group(g), nodeStartID(sID), nodeEndID(eID) {}
 };
 
 
@@ -83,6 +82,9 @@ private:
     void logDebugMessage(const QString &message);
     void visualizePath(const QList<int> &path);
     void runBFS(int startNode, int endNode);
+    bool createArrow(QGraphicsLineItem* edge, QPointF start, QPointF end, double distance, double consumption);
+    void runRandomizedBFS(int startNode, int endNode, int maxPaths = 5);
+
 };
 
 #endif // MAINWINDOW_H

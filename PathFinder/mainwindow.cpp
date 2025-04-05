@@ -9,7 +9,11 @@
 #include <QInputDialog>
 #include <QMessageBox>
 #include <QQueue>
-
+#include <algorithm>
+#include <ctime>
+#include <algorithm>
+#include <random>
+#include <chrono>
 MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent)
     , ui(new Ui::MainWindow)
@@ -32,7 +36,68 @@ MainWindow::MainWindow(QWidget *parent)
     ui->graphicsView->setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
     ui->graphicsView->setDragMode(QGraphicsView::NoDrag);
 }
+bool MainWindow::createArrow(QGraphicsLineItem* edge, QPointF start, QPointF end, double distance, double consumption) {
+    // Găsim ID-urile nodurilor sursă și destinație
+    int fromId = -1;
+    int toId = -1;
 
+    // Caută nodul de start (fromId)
+    for (const ArrowNode& node : arrowNodes) {
+        if (QLineF(node.connection, start).length() < 5.0) {  // Toleranță mică pentru poziție
+            fromId = node.ID;
+            break;
+        }
+    }
+
+    // Caută nodul de final (toId)
+    for (const ArrowNode& node : arrowNodes) {
+        if (QLineF(node.connection, end).length() < 5.0) {
+            toId = node.ID;
+            break;
+        }
+    }
+
+    if (fromId == -1 || toId == -1) {
+        qDebug() << "Nu s-au găsit ID-urile nodurilor pentru muchie!";
+        return false;
+    }
+
+    QLineF line(start, end);
+    if (line.length() == 0) return false;
+
+    // Crearea săgeții (triunghi)
+    QPointF u = (end - start) / line.length();
+    QPointF v(-u.y(), u.x());
+    double sideLength = 15.0;
+    double h = (sqrt(3) / 2) * sideLength;
+
+    QPolygonF arrowHead;
+    arrowHead << end
+              << (end - u * h + v * sideLength/2)
+              << (end - u * h - v * sideLength/2);
+
+    QGraphicsPolygonItem* arrow = scene->addPolygon(arrowHead, QPen(Qt::black), QBrush(Qt::black));
+    arrow->setZValue(edge->zValue() + 1);
+
+    // Crearea dreptunghiului cu text
+    QPointF rectPos = start + (end - start) * 0.7;
+    QGraphicsRectItem* rect = scene->addRect(-50, -25, 100, 50, QPen(Qt::red), QBrush(Qt::white));
+    rect->setPos(rectPos);
+
+    QGraphicsTextItem* text = scene->addText(QString("C: %1\nD: %2").arg(consumption, 0, 'f', 2).arg(distance, 0, 'f', 2));
+    QRectF textRect = text->boundingRect();
+    text->setPos(rectPos.x() - textRect.width()/2, rectPos.y() - textRect.height()/2);
+
+    // Grupare elemente
+    QGraphicsItemGroup* group = scene->createItemGroup({arrow, rect, text});
+    group->setFlag(QGraphicsItem::ItemIsSelectable, true);
+    group->setFlag(QGraphicsItem::ItemIsMovable, true);
+
+    // Salvare date săgeată cu ID-uri corecte
+    arrowDataList.append(ArrowData(start, end, distance, consumption, group, fromId, toId));
+
+    return true;
+}
 void MainWindow::mousePressEvent(QMouseEvent *event)
 {
     QPointF scenePos = ui->graphicsView->mapToScene(event->pos());
@@ -218,7 +283,6 @@ MainWindow::~MainWindow()
     delete ui;
 }
 void MainWindow::importData() {
-    // Deschide Windows Explorer pentru a selecta fișierul JSON
     QString fileName = QFileDialog::getOpenFileName(this, tr("Open JSON File"), "", tr("JSON Files (*.json)"));
     if (fileName.isEmpty())
         return;
@@ -233,32 +297,94 @@ void MainWindow::importData() {
     file.close();
 
     QJsonDocument doc = QJsonDocument::fromJson(data);
-    if (!doc.isArray()) {
-        qDebug() << "Format JSON incorect. Se așteaptă un array.";
+    if (!doc.isObject()) {
+        qDebug() << "Format JSON incorect. Se așteaptă un obiect.";
         return;
     }
 
-    QJsonArray array = doc.array();
-    for (const QJsonValue &value : array) {
-        this->nodeCounter++;
-        if (!value.isObject())
+    QJsonObject root = doc.object();
+    QJsonArray nodesArray = root["nodes"].toArray();
+    QJsonArray edgesArray = root["edges"].toArray();
+
+    // Procesează nodurile
+    for (const QJsonValue &nodeValue : nodesArray) {
+        if (!nodeValue.isObject())
             continue;
-        QJsonObject obj = value.toObject();
-        int nodeNumber = obj["node"].toInt();
-        qreal x = obj["x"].toDouble();
-        qreal y = obj["y"].toDouble();
+        QJsonObject nodeObj = nodeValue.toObject();
+        int nodeId = nodeObj["id"].toInt();
+        qreal x = nodeObj["x"].toDouble();
+        qreal y = nodeObj["y"].toDouble();
 
         qreal radius = 10.0;
         QRectF circleRect(x - radius, y - radius, radius * 2, radius * 2);
         QGraphicsEllipseItem *circle = scene->addEllipse(circleRect, QPen(Qt::black), QBrush(selectedColor));
 
-        // Creează textul ca item copil al cercului
-        QGraphicsTextItem *text = new QGraphicsTextItem(QString::number(nodeNumber), circle);
+        // Adaugă text cu ID-ul nodului
+        QGraphicsTextItem *text = new QGraphicsTextItem(QString::number(nodeId), circle);
         text->setFont(QFont("Arial", 10, QFont::Bold));
         text->setDefaultTextColor(Qt::black);
         QRectF textRect = text->boundingRect();
         text->setPos(circleRect.x() + circleRect.width()/2 - textRect.width()/2,
                      circleRect.y() + circleRect.height()/2 - textRect.height()/2);
+
+        // Adaugă ArrowNode în listă
+        ArrowNode newNode(QPointF(x, y), nodeId);
+        arrowNodes.append(newNode);
+
+        // Actualizează nodeCounter
+        if (nodeId >= nodeCounter) {
+            nodeCounter = nodeId + 1;
+        }
+    }
+
+    // Procesează muchiile
+    for (const QJsonValue &edgeValue : edgesArray) {
+        if (!edgeValue.isObject())
+            continue;
+        QJsonObject edgeObj = edgeValue.toObject();
+        int fromId = edgeObj["from"].toInt();
+        int toId = edgeObj["to"].toInt();
+        double distance = edgeObj["distance"].toDouble();
+        double consumption = edgeObj["consumption"].toDouble();
+
+        // Găsește nodurile sursă și destinație după ID
+        QGraphicsEllipseItem *fromNode = nullptr;
+        QGraphicsEllipseItem *toNode = nullptr;
+
+        for (QGraphicsItem *item : scene->items()) {
+            if (item->type() == QGraphicsEllipseItem::Type) {
+                QGraphicsEllipseItem *ellipse = qgraphicsitem_cast<QGraphicsEllipseItem*>(item);
+                QGraphicsTextItem *textItem = qgraphicsitem_cast<QGraphicsTextItem*>(ellipse->childItems().first());
+                if (textItem) {
+                    int id = textItem->toPlainText().toInt();
+                    if (id == fromId) {
+                        fromNode = ellipse;
+                    } else if (id == toId) {
+                        toNode = ellipse;
+                    }
+                }
+            }
+        }
+
+        if (!fromNode || !toNode) {
+            qDebug() << "Nu s-au găsit nodurile pentru muchia de la" << fromId << "la" << toId;
+            continue;
+        }
+
+        // Creează linia între noduri
+        QPointF start = fromNode->sceneBoundingRect().center();
+        QPointF end = toNode->sceneBoundingRect().center();
+        QGraphicsLineItem *edgeLine = new QGraphicsLineItem(QLineF(start, end));
+        edgeLine->setPen(QPen(Qt::black, 2));
+
+        // Creează săgeata cu valorile din JSON
+        bool success = createArrow(edgeLine, start, end, distance, consumption);
+        if (success) {
+            scene->addItem(edgeLine);
+            edges.append(qMakePair(edgeLine, QPair<QGraphicsEllipseItem*, QGraphicsEllipseItem*>(fromNode, toNode)));
+        } else {
+            delete edgeLine;
+        }
     }
 }
 
@@ -513,7 +639,7 @@ void MainWindow::showWarning(const QString &message)
 
 void MainWindow::runGenericAlgorithm(int startNode, int endNode)
 {
-    runBFS(startNode, endNode);
+    runRandomizedBFS(startNode, endNode);
 }
 
 void MainWindow::runBFS(int startNode, int endNode)
@@ -574,6 +700,69 @@ void MainWindow::runBFS(int startNode, int endNode)
 
     // Dacă am ajuns aici, înseamnă că nu am găsit o cale
     qDebug() << "No path found between node " << startNode << " and node " << endNode;
+}
+
+void MainWindow::runRandomizedBFS(int startNode, int endNode, int maxPaths) {
+    if (startNode == endNode) {
+        qDebug() << "Start and end nodes are the same.";
+        return;
+    }
+
+    if (arrowNodes.isEmpty()) {
+        qDebug() << "No nodes available.";
+        return;
+    }
+
+    QList<QList<int>> allPaths;
+    QList<int> currentPath;
+    currentPath.append(startNode);
+
+    // Folosim o coadă pentru a păstra căile parțiale
+    QQueue<QList<int>> pathQueue;
+    pathQueue.enqueue(currentPath);
+
+    while (!pathQueue.isEmpty() && allPaths.size() < maxPaths) {
+        currentPath = pathQueue.dequeue();
+        int lastNode = currentPath.last();
+
+        if (lastNode == endNode) {
+            allPaths.append(currentPath);
+            continue;
+        }
+
+        // Colectăm toți vecinii nevizitați
+        QList<int> neighbors;
+        for (const ArrowData &arrowData : arrowDataList) {
+            if (arrowData.nodeStartID == lastNode && !currentPath.contains(arrowData.nodeEndID)) {
+                neighbors.append(arrowData.nodeEndID);
+            }
+        }
+
+        // Amestecăm vecinii pentru randomizare
+        auto rng = std::default_random_engine(std::chrono::system_clock::now().time_since_epoch().count());
+        std::shuffle(neighbors.begin(), neighbors.end(), rng);
+        // Adăugăm căi noi în coadă
+        for (int neighbor : neighbors) {
+            QList<int> newPath(currentPath);
+            newPath.append(neighbor);
+            pathQueue.enqueue(newPath);
+        }
+    }
+
+    // Afișăm toate căile găsite
+    if (allPaths.isEmpty()) {
+        qDebug() << "No paths found between node" << startNode << "and node" << endNode;
+    } else {
+        qDebug() << "Found" << allPaths.size() << "random paths:";
+        for (const QList<int> &path : allPaths) {
+            QString pathStr;
+            for (int node : path) {
+                pathStr += QString::number(node) + " -> ";
+            }
+            pathStr.chop(4); // Elimină ultima " -> "
+            qDebug() << pathStr;
+        }
+    }
 }
 
 
