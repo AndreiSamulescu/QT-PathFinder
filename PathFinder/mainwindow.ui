@@ -134,6 +134,23 @@
        <string>Run Algorithm</string>
       </property>
      </widget>
+	 
+	 <widget class="QPushButton" name="clearCanvasButton">
+      <property name="geometry">
+       <rect>
+        <x>10</x>
+        <y>130</y>
+        <width>100</width>
+        <height>30</height>
+       </rect>
+      </property>
+      <property name="text">
+       <string>Clear Canvas</string>
+      </property>
+      <property name="toolTip">
+       <string>Remove all nodes and edges</string>
+      </property>
+     </widget>
      <widget class="QComboBox" name="algorithmComboBox">
       <property name="geometry">
        <rect>

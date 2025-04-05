@@ -37,6 +37,8 @@ MainWindow::MainWindow(QWidget *parent)
     ui->graphicsView->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
     ui->graphicsView->setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
     ui->graphicsView->setDragMode(QGraphicsView::NoDrag);
+    connect(ui->clearCanvasButton, &QPushButton::clicked, this, &MainWindow::clearCanvas);
+
 }
 bool MainWindow::createArrow(QGraphicsLineItem* edge, QPointF start, QPointF end, double distance, double consumption) {
     // Găsim ID-urile nodurilor sursă și destinație
@@ -100,6 +102,21 @@ bool MainWindow::createArrow(QGraphicsLineItem* edge, QPointF start, QPointF end
 
     return true;
 }
+
+void MainWindow::clearCanvas() {
+    // Șterge toate elementele din scenă
+    scene->clear();
+
+    // Resetează contoarele și listele
+    arrowNodes.clear();
+    arrowDataList.clear();
+    edges.clear();
+    selectedNodes.clear();
+    nodeCounter = 1;
+
+    qDebug() << "Canvas cleared";
+}
+
 void MainWindow::mousePressEvent(QMouseEvent *event)
 {
     QPointF scenePos = ui->graphicsView->mapToScene(event->pos());

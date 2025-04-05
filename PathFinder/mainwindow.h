@@ -60,6 +60,8 @@ private slots:
     void importData();  // Slot pentru importul datelor
     void runAlgorithm();
     void updateCurrentAlgorithm(int index);
+    void clearCanvas();
+
 
 private:
     Ui::MainWindow *ui;
