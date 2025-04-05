@@ -16,6 +16,9 @@
 #include <chrono>
 #include <QTextEdit>
 #include <qboxlayout.h>
+#include <QTableWidget>
+#include <QHeaderView>
+
 MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent)
     , ui(new Ui::MainWindow)
@@ -443,95 +446,333 @@ void MainWindow::runAlgorithm()
     }
 }
 
-void MainWindow::runFordFulkersonAlgorithm(int startNode, int endNode)
-{
-    logDebugMessage("Running Ford-Fulkerson Algorithm");
-    qDebug() << "Running Ford-Fulkerson Algorithm";
+void MainWindow::runFordFulkersonAlgorithm(int startNode, int endNode) {
+    logDebugMessage("Running Enhanced Ford-Fulkerson Algorithm");
 
-    // Verificăm dacă nodurile startNode și endNode sunt valide
-    int numNodes = arrowNodes.size();  // sau orice număr de noduri din graful tău
+    // Verificare noduri valide
+    int numNodes = arrowNodes.size();
     if (startNode < 1 || endNode < 1 || startNode > numNodes || endNode > numNodes) {
-        qDebug() << "Invalid start or end node.";
+        showWarning("Invalid start or end node");
         return;
     }
 
-    QVector<QVector<int>> capacity(numNodes, QVector<int>(numNodes, 0));  // Matrice de capacități
-    QVector<QVector<int>> flow(numNodes, QVector<int>(numNodes, 0));  // Matrice de fluxuri
+    // Inițializare structuri de date
+    QVector<QVector<int>> capacity(numNodes, QVector<int>(numNodes, 0));
+    QVector<QVector<int>> flow(numNodes, QVector<int>(numNodes, 0));
+    QVector<QVector<bool>> originalEdges(numNodes, QVector<bool>(numNodes, false));
 
-    // Inițializăm matricea de capacități
-    for (const ArrowData &arrowData : arrowDataList) {
-        int startID = arrowData.nodeStartID;  // Nodul de început
-        int endID = arrowData.nodeEndID;      // Nodul de sfârșit
-        int cap = arrowData.distance;          // Capacitatea pe muchie (poate fi distanța sau un alt atribut)
-
-        // Ajustăm la indexarea corectă de la 0
-        capacity[startID - 1][endID - 1] = cap;  // Setăm capacitatea pentru muchie
+    // Populare matrice de capacități
+    for (const ArrowData& arrowData : arrowDataList) {
+        int startID = arrowData.nodeStartID - 1;
+        int endID = arrowData.nodeEndID - 1;
+        capacity[startID][endID] = arrowData.distance;
+        originalEdges[startID][endID] = true;
     }
 
-    int source = startNode - 1;  // Nodul sursă primit ca parametru (ajustat pentru indexare de la 0)
-    int sink = endNode - 1;      // Nodul destinație primit ca parametru (ajustat pentru indexare de la 0)
+    int source = startNode - 1;
+    int sink = endNode - 1;
+    int maxFlow = 0;
+    QList<QList<int>> augmentingPaths;
+    QList<EdgeAnalysis> edgeAnalyses;
 
-    // Algoritmul Ford-Fulkerson
-    int maxFlow = 0;  // Fluxul maxim
+    // Generator random
+    std::random_device rd;
+    std::mt19937 rng(rd());
 
     while (true) {
-        // Căutăm un drum augmentator folosind BFS
-        QVector<int> parent(numNodes, -1);  // Harta părinților pentru reconstrucția drumului
-        QVector<bool> visited(numNodes, false);  // Set pentru vizitarea nodurilor
+        // BFS cu randomizare pentru drum augmentator
+        QVector<int> parent(numNodes, -1);
+        QVector<bool> visited(numNodes, false);
         QQueue<int> queue;
-
         queue.enqueue(source);
         visited[source] = true;
 
-        // BFS pentru a găsi un drum augmentator
         bool pathFound = false;
-        while (!queue.isEmpty()) {
+        while (!queue.isEmpty() && !pathFound) {
             int currentNode = queue.dequeue();
 
-            // Verificăm vecinii
+            // Colectare și randomizare vecini
+            QList<int> neighbors;
             for (int neighbor = 0; neighbor < numNodes; ++neighbor) {
-                // Dacă există capacitate reziduală și nu am vizitat deja vecinul
-                if (!visited[neighbor] && capacity[currentNode][neighbor] - flow[currentNode][neighbor] > 0) {
-                    queue.enqueue(neighbor);
-                    visited[neighbor] = true;
-                    parent[neighbor] = currentNode;
-
-                    if (neighbor == sink) {
-                        pathFound = true;
-                        break;
-                    }
+                if (!visited[neighbor] && (capacity[currentNode][neighbor] - flow[currentNode][neighbor] > 0)) {
+                    neighbors.append(neighbor);
                 }
             }
+            std::shuffle(neighbors.begin(), neighbors.end(), rng);
 
-            if (pathFound) break;
+            for (int neighbor : neighbors) {
+                parent[neighbor] = currentNode;
+                visited[neighbor] = true;
+                queue.enqueue(neighbor);
+
+                if (neighbor == sink) {
+                    pathFound = true;
+                    break;
+                }
+            }
         }
 
-        // Dacă nu am găsit niciun drum augmentator, înseamnă că fluxul maxim a fost găsit
         if (!pathFound) break;
 
-        // Găsim capacitatea minimă pe drumul augmentator
+        // Reconstruire drum și calcul flow
+        QList<int> path;
         int pathFlow = INT_MAX;
         int currentNode = sink;
+
         while (currentNode != source) {
+            path.prepend(currentNode + 1);
             int prevNode = parent[currentNode];
-            pathFlow = std::min(pathFlow, capacity[prevNode][currentNode] - flow[prevNode][currentNode]);
+            pathFlow = qMin(pathFlow, capacity[prevNode][currentNode] - flow[prevNode][currentNode]);
             currentNode = prevNode;
         }
+        path.prepend(source + 1);
+        augmentingPaths.append(path);
 
-        // Actualizăm fluxurile pe drum
+        // Actualizare fluxuri
         currentNode = sink;
         while (currentNode != source) {
             int prevNode = parent[currentNode];
             flow[prevNode][currentNode] += pathFlow;
-            flow[currentNode][prevNode] -= pathFlow;  // Flux invers (pentru fluxul de retur)
+            flow[currentNode][prevNode] -= pathFlow;
             currentNode = prevNode;
         }
 
         maxFlow += pathFlow;
     }
 
-    qDebug() << "Max flow found from node " << startNode << " to node " << endNode << ": " << maxFlow;
+    // Analiză muchii pentru reziduuri
+    for (int i = 0; i < numNodes; ++i) {
+        for (int j = 0; j < numNodes; ++j) {
+            if (originalEdges[i][j] || flow[j][i] > 0) {
+                EdgeAnalysis analysis;
+                analysis.from = i + 1;
+                analysis.to = j + 1;
+                analysis.capacity = originalEdges[i][j] ? capacity[i][j] : 0;
+                analysis.flow = flow[i][j];
+                analysis.residual = originalEdges[i][j] ? capacity[i][j] - flow[i][j] : flow[j][i];
+
+                if (originalEdges[i][j]) {
+                    if (flow[i][j] < capacity[i][j]) {
+                        analysis.type = "Non-full forward edge";
+                    } else {
+                        analysis.type = "Saturated edge";
+                    }
+                } else {
+                    if (flow[j][i] > 0) {
+                        analysis.type = "Non-empty backward edge";
+                    } else {
+                        analysis.type = "Residual only";
+                    }
+                }
+
+                edgeAnalyses.append(analysis);
+            }
+        }
+    }
+
+    // Afișare rezultate
+    showFordFulkersonResults(startNode, endNode, maxFlow, augmentingPaths, edgeAnalyses);
+    highlightResidualGraph(flow, capacity, originalEdges, startNode, endNode);
 }
+
+void MainWindow::highlightNode(int nodeId, const QColor& color) {
+    for (const ArrowNode& node : arrowNodes) {
+        if (node.ID == nodeId) {
+            QPointF pos = node.connection;
+
+            // Caută iteme la acea poziție
+            QList<QGraphicsItem*> itemsAtPos = scene->items(pos);
+            for (QGraphicsItem* item : itemsAtPos) {
+                QGraphicsEllipseItem* ellipse = qgraphicsitem_cast<QGraphicsEllipseItem*>(item);
+                if (ellipse) {
+                    ellipse->setBrush(QBrush(color));
+                    ellipse->setPen(QPen(Qt::black));
+                    break;
+                }
+            }
+            break; // odată ce l-am găsit, ieșim din loop
+        }
+    }
+}
+
+void MainWindow::showFordFulkersonResults(int startNode, int endNode, int maxFlow,
+                                          const QList<QList<int>>& augmentingPaths,
+                                          const QList<EdgeAnalysis>& edgeAnalyses) {
+    QDialog* resultsDialog = new QDialog(this);
+    resultsDialog->setWindowTitle("Ford-Fulkerson Detailed Analysis");
+    resultsDialog->resize(800, 600);
+
+    QVBoxLayout* mainLayout = new QVBoxLayout(resultsDialog);
+
+    // Tab widget pentru organizare
+    QTabWidget* tabWidget = new QTabWidget(resultsDialog);
+
+    // Tab-ul cu rezumat
+    QWidget* summaryTab = new QWidget();
+    QVBoxLayout* summaryLayout = new QVBoxLayout(summaryTab);
+
+    QTextEdit* summaryText = new QTextEdit(summaryTab);
+    summaryText->setReadOnly(true);
+
+    QString summary = QString(
+                          "╔══════════════════════════════════╗\n"
+                          "║      FORD-FULKERSON RESULTS      ║\n"
+                          "╚══════════════════════════════════╝\n\n"
+                          "● Source Node: %1\n"
+                          "● Sink Node: %2\n"
+                          "● Maximum Flow: %3\n"
+                          "● Augmenting Paths Found: %4\n\n"
+                          "╔══════════════════════════════════╗\n"
+                          "║          FLOW CHARACTERISTICS    ║\n"
+                          "╚══════════════════════════════════╝\n"
+                          "Total Nodes: %5\n"
+                          "Total Edges: %6\n"
+                          "Execution Time: %7 ms\n"
+                          ).arg(startNode).arg(endNode).arg(maxFlow).arg(augmentingPaths.size())
+                          .arg(arrowNodes.size()).arg(arrowDataList.size()).arg(QDateTime::currentDateTime().time().msec());
+
+    summaryText->setText(summary);
+    summaryLayout->addWidget(summaryText);
+    tabWidget->addTab(summaryTab, "Summary");
+
+    // Tab-ul cu analiza muchiilor
+    QWidget* edgesTab = new QWidget();
+    QVBoxLayout* edgesLayout = new QVBoxLayout(edgesTab);
+
+    QTableWidget* edgesTable = new QTableWidget(edgeAnalyses.size(), 6, edgesTab);
+    edgesTable->setHorizontalHeaderLabels({"From", "To", "Capacity", "Flow", "Residual", "Type"});
+    edgesTable->verticalHeader()->setVisible(false);
+
+    for (int i = 0; i < edgeAnalyses.size(); ++i) {
+        const EdgeAnalysis& ea = edgeAnalyses[i];
+        edgesTable->setItem(i, 0, new QTableWidgetItem(QString::number(ea.from)));
+        edgesTable->setItem(i, 1, new QTableWidgetItem(QString::number(ea.to)));
+        edgesTable->setItem(i, 2, new QTableWidgetItem(QString::number(ea.capacity)));
+        edgesTable->setItem(i, 3, new QTableWidgetItem(QString::number(ea.flow)));
+        edgesTable->setItem(i, 4, new QTableWidgetItem(QString::number(ea.residual)));
+        edgesTable->setItem(i, 5, new QTableWidgetItem(ea.type));
+    }
+
+    edgesTable->resizeColumnsToContents();
+    edgesLayout->addWidget(edgesTable);
+    tabWidget->addTab(edgesTab, "Edge Analysis");
+
+    // Tab-ul cu drumuri augmentatoare
+    QWidget* pathsTab = new QWidget();
+    QVBoxLayout* pathsLayout = new QVBoxLayout(pathsTab);
+
+    QTextEdit* pathsText = new QTextEdit(pathsTab);
+    pathsText->setReadOnly(true);
+
+    QString pathsStr = "Augmenting Paths Found:\n";
+    for (int i = 0; i < augmentingPaths.size(); ++i) {
+        pathsStr += QString("%1. ").arg(i+1);
+        for (int node : augmentingPaths[i]) {
+            pathsStr += QString::number(node) + " → ";
+        }
+        pathsStr.chop(3);
+        pathsStr += "\n";
+    }
+
+    pathsText->setText(pathsStr);
+    pathsLayout->addWidget(pathsText);
+    tabWidget->addTab(pathsTab, "Augmenting Paths");
+
+    mainLayout->addWidget(tabWidget);
+
+    // Buton de închidere
+    QPushButton* closeButton = new QPushButton("Close", resultsDialog);
+    connect(closeButton, &QPushButton::clicked, resultsDialog, &QDialog::accept);
+    mainLayout->addWidget(closeButton);
+
+    resultsDialog->exec();
+    delete resultsDialog;
+}
+
+void MainWindow::highlightResidualGraph(const QVector<QVector<int>>& flow,
+                                        const QVector<QVector<int>>& capacity,
+                                        const QVector<QVector<bool>>& originalEdges,
+                                        int startNode, int endNode) {
+    resetSceneColors();
+
+    // Highlight noduri speciale
+    highlightNode(startNode, Qt::green);  // Sursa
+    highlightNode(endNode, Qt::red);      // Sink
+
+    // Highlight muchii
+    for (int i = 0; i < flow.size(); ++i) {
+        for (int j = 0; j < flow[i].size(); ++j) {
+            if (originalEdges[i][j]) {
+                // Muchii originale
+                if (flow[i][j] > 0) {
+                    if (flow[i][j] < capacity[i][j]) {
+                        // Muchie forward non-saturată
+                        highlightEdge(i+1, j+1, QColor(65, 105, 225), flow[i][j],
+                                      QString("F: %1/%2").arg(flow[i][j]).arg(capacity[i][j]));
+                    } else {
+                        // Muchie saturată
+                        highlightEdge(i+1, j+1, Qt::red, flow[i][j], "SATURATED");
+                    }
+                }
+            } else if (flow[j][i] > 0) {
+                // Muchie backward
+                highlightEdge(j+1, i+1, QColor(255, 165, 0), flow[j][i],
+                              QString("B: %1").arg(flow[j][i]));
+            }
+        }
+    }
+}
+
+void MainWindow::highlightEdge(int from, int to, const QColor& color, int value, const QString& label) {
+    for (auto& edge : edges) {
+        QGraphicsTextItem* textFrom = qgraphicsitem_cast<QGraphicsTextItem*>(edge.second.first->childItems().first());
+        QGraphicsTextItem* textTo = qgraphicsitem_cast<QGraphicsTextItem*>(edge.second.second->childItems().first());
+
+        if (textFrom && textTo &&
+            textFrom->toPlainText().toInt() == from &&
+            textTo->toPlainText().toInt() == to) {
+
+            // Setare stil linie
+            QPen pen(color, 3);
+            if (label.contains("B:")) {
+                pen.setStyle(Qt::DotLine);
+            }
+            edge.first->setPen(pen);
+
+            // Centru pentru etichetă
+            QPointF center = (edge.second.first->sceneBoundingRect().center() +
+                              edge.second.second->sceneBoundingRect().center()) / 2;
+
+            // Stil font comun
+            QFont font;
+            font.setPointSize(12);     // mărime mai mare
+            font.setBold(true);        // bold
+
+            // Etichetă flow
+            QGraphicsSimpleTextItem* flowText = scene->addSimpleText(label);
+            flowText->setFont(font);
+            flowText->setPos(center);
+            flowText->setBrush(QBrush(color));
+            flowText->setZValue(1);
+
+            // Etichetă rezidual
+            if (label.contains("/")) {
+                QStringList parts = label.split('/');
+                int residual = parts[1].toInt() - parts[0].toInt();
+
+                QGraphicsSimpleTextItem* resText = scene->addSimpleText(QString("R: %1").arg(residual));
+                font.setPointSize(11); // puțin mai mic la reziduu dacă vrei diferențiere
+                resText->setFont(font);
+                resText->setPos(center.x(), center.y() + 18); // puțin mai jos
+                resText->setBrush(QBrush(Qt::darkGray));
+                resText->setZValue(1);
+            }
+
+            break;
+        }
+    }
+}
+
 
 
 

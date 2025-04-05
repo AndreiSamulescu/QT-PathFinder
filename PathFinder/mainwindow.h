@@ -15,6 +15,14 @@
 #include "custommodal.h"
 #include <QMessageBox>
 
+struct EdgeAnalysis {
+    int from;
+    int to;
+    int capacity;
+    int flow;
+    int residual;
+    QString type;
+};
 struct ArrowData {
     QPointF startPoint;
     QPointF endPoint;
@@ -92,8 +100,15 @@ private:
     QMap<QString, QVariant> calculatePathMetrics(const QList<int>& path);
     void highlightPathOnScene(const QList<int>& path);
     void resetSceneColors();
-
-
+    void highlightResidualGraph(const QVector<QVector<int>>& flow,
+                                            const QVector<QVector<int>>& capacity,
+                                            const QVector<QVector<bool>>& originalEdges,
+                                            int startNode, int endNode);
+    void highlightEdge(int from, int to, const QColor& color, int value, const QString& label);
+    void showFordFulkersonResults(int startNode, int endNode, int maxFlow,
+                                              const QList<QList<int>>& augmentingPaths,
+                                              const QList<EdgeAnalysis>& edgeAnalyses);
+    void highlightNode(int nodeId, const QColor& color);
 
 };
 
