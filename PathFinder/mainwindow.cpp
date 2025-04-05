@@ -14,6 +14,8 @@
 #include <algorithm>
 #include <random>
 #include <chrono>
+#include <QTextEdit>
+#include <qboxlayout.h>
 MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent)
     , ui(new Ui::MainWindow)
@@ -705,6 +707,8 @@ void MainWindow::runBFS(int startNode, int endNode)
 void MainWindow::runRandomizedBFS(int startNode, int endNode, int maxPaths) {
     if (startNode == endNode) {
         qDebug() << "Start and end nodes are the same.";
+        QList<int> path = {startNode};
+        visualizePath(path, "Randomized BFS", QVariant());
         return;
     }
 
@@ -720,6 +724,10 @@ void MainWindow::runRandomizedBFS(int startNode, int endNode, int maxPaths) {
     // Folosim o coadă pentru a păstra căile parțiale
     QQueue<QList<int>> pathQueue;
     pathQueue.enqueue(currentPath);
+
+    // Inițializare generator random
+    std::random_device rd;
+    std::mt19937 rng(rd());
 
     while (!pathQueue.isEmpty() && allPaths.size() < maxPaths) {
         currentPath = pathQueue.dequeue();
@@ -739,8 +747,8 @@ void MainWindow::runRandomizedBFS(int startNode, int endNode, int maxPaths) {
         }
 
         // Amestecăm vecinii pentru randomizare
-        auto rng = std::default_random_engine(std::chrono::system_clock::now().time_since_epoch().count());
         std::shuffle(neighbors.begin(), neighbors.end(), rng);
+
         // Adăugăm căi noi în coadă
         for (int neighbor : neighbors) {
             QList<int> newPath(currentPath);
@@ -749,25 +757,221 @@ void MainWindow::runRandomizedBFS(int startNode, int endNode, int maxPaths) {
         }
     }
 
-    // Afișăm toate căile găsite
+    // Procesăm rezultatele
     if (allPaths.isEmpty()) {
         qDebug() << "No paths found between node" << startNode << "and node" << endNode;
+        QMessageBox::information(this, "No Path Found",
+                                 QString("No path exists from node %1 to node %2").arg(startNode).arg(endNode));
     } else {
         qDebug() << "Found" << allPaths.size() << "random paths:";
+
+        // Afișăm fiecare cale găsită
         for (const QList<int> &path : allPaths) {
+            // Construim string pentru debug
             QString pathStr;
             for (int node : path) {
                 pathStr += QString::number(node) + " -> ";
             }
-            pathStr.chop(4); // Elimină ultima " -> "
+            pathStr.chop(4);
             qDebug() << pathStr;
+
+            // Afișăm vizual fiecare cale
+            visualizePath(path, "Randomized BFS", QVariant::fromValue(calculatePathMetrics(path)));
         }
+
+        // Highlight la prima cale în interfață grafică
+        if (!allPaths.isEmpty()) {
+            highlightPathOnScene(allPaths.first());
+        }
+    }
+}
+
+// Funcții helper adiționale:
+
+QMap<QString, QVariant> MainWindow::calculatePathMetrics(const QList<int>& path) {
+    QMap<QString, QVariant> metrics;
+    double totalDistance = 0;
+    double totalConsumption = 0;
+    int hops = path.size() - 1;
+
+    for (int i = 0; i < path.size() - 1; i++) {
+        for (const ArrowData& arrow : arrowDataList) {
+            if (arrow.nodeStartID == path[i] && arrow.nodeEndID == path[i+1]) {
+                totalDistance += arrow.distance;
+                totalConsumption += arrow.consumption;
+                break;
+            }
+        }
+    }
+
+    metrics["total_distance"] = totalDistance;
+    metrics["total_consumption"] = totalConsumption;
+    metrics["hops"] = hops;
+    return metrics;
+}
+
+void MainWindow::highlightPathOnScene(const QList<int>& path) {
+    // Resetăm toate culorile la cele inițiale
+    resetSceneColors();
+
+    // Highlight nodurile din cale
+    for (int nodeId : path) {
+        for (QGraphicsItem* item : scene->items()) {
+            if (item->type() == QGraphicsEllipseItem::Type) {
+                QGraphicsEllipseItem* ellipse = qgraphicsitem_cast<QGraphicsEllipseItem*>(item);
+                QGraphicsTextItem* textItem = qgraphicsitem_cast<QGraphicsTextItem*>(ellipse->childItems().first());
+                if (textItem && textItem->toPlainText().toInt() == nodeId) {
+                    ellipse->setBrush(QBrush(Qt::yellow));
+                    break;
+                }
+            }
+        }
+    }
+
+    // Highlight muchiile din cale
+    for (int i = 0; i < path.size() - 1; i++) {
+        int from = path[i];
+        int to = path[i+1];
+
+        for (auto& edge : edges) {
+            QGraphicsTextItem* textFrom = qgraphicsitem_cast<QGraphicsTextItem*>(edge.second.first->childItems().first());
+            QGraphicsTextItem* textTo = qgraphicsitem_cast<QGraphicsTextItem*>(edge.second.second->childItems().first());
+
+            if (textFrom && textTo &&
+                textFrom->toPlainText().toInt() == from &&
+                textTo->toPlainText().toInt() == to) {
+                edge.first->setPen(QPen(Qt::red, 3));
+                break;
+            }
+        }
+    }
+}
+
+void MainWindow::resetSceneColors() {
+    // Resetăm nodurile
+    for (QGraphicsItem* item : scene->items()) {
+        if (item->type() == QGraphicsEllipseItem::Type) {
+            qgraphicsitem_cast<QGraphicsEllipseItem*>(item)->setBrush(QBrush(selectedColor));
+        }
+    }
+
+    // Resetăm muchiile
+    for (auto& edge : edges) {
+        edge.first->setPen(QPen(Qt::black, 2));
     }
 }
 
 
 
-void MainWindow::visualizePath(const QList<int> &path)
-{
+void MainWindow::visualizePath(const QList<int>& path, const QString& algorithmName, const QVariant& additionalData) {
+    // Creăm un dialog modal
+    QDialog* pathDialog = new QDialog(this);
+    pathDialog->setWindowTitle("Path Details - " + algorithmName);
+    pathDialog->setMinimumSize(400, 300);
 
+    QVBoxLayout* layout = new QVBoxLayout(pathDialog);
+
+    // Adăugăm un QTextEdit pentru detalii
+    QTextEdit* detailsText = new QTextEdit(pathDialog);
+    detailsText->setReadOnly(true);
+    detailsText->setFont(QFont("Courier New", 10));
+
+    // Generăm conținutul în funcție de algoritm
+    QString content;
+    content += "╔══════════════════════════════╗\n";
+    content += "║  PATH FINDING ALGORITHM RESULTS  ║\n";
+    content += "╚══════════════════════════════╝\n\n";
+    QStringList pathStrList;
+    for (int node : path) {
+        pathStrList << QString::number(node);
+    }
+    content += "● Path: " + pathStrList.join(" → ") + "\n";
+    content += "● Algorithm: " + algorithmName + "\n";
+    content += "● Nodes visited: " + QString::number(path.size()) + "\n";
+
+    if (algorithmName == "Ford-Fulkerson" || algorithmName == "Edmonds-Karp") {
+        content += "● Max flow: " + additionalData.toString() + "\n";
+        content += "● Path flow: " + QString::number(calculatePathFlow(path)) + "\n";
+    }
+    else {
+        content += "● Path length: " + QString::number(path.size()-1) + " hops\n";
+        content += "● Total distance: " + QString::number(calculatePathDistance(path)) + "\n";
+    }
+
+    content += "\n════════════════════════════\n";
+    content += "TECHNICAL DETAILS:\n";
+    content += getAlgorithmDetails(algorithmName, path);
+
+    detailsText->setText(content);
+    layout->addWidget(detailsText);
+
+    // Buton de închidere
+    QPushButton* closeButton = new QPushButton("Close", pathDialog);
+    connect(closeButton, &QPushButton::clicked, pathDialog, &QDialog::accept);
+    layout->addWidget(closeButton);
+
+    pathDialog->exec();
+    delete pathDialog;
+}
+
+// Funcții helper:
+double MainWindow::calculatePathDistance(const QList<int>& path) {
+    double total = 0;
+    for (int i = 0; i < path.size()-1; i++) {
+        for (const ArrowData& arrow : arrowDataList) {
+            if (arrow.nodeStartID == path[i] && arrow.nodeEndID == path[i+1]) {
+                total += arrow.distance;
+                break;
+            }
+        }
+    }
+    return total;
+}
+
+double MainWindow::calculatePathFlow(const QList<int>& path) {
+    double minFlow = std::numeric_limits<double>::max();
+    for (int i = 0; i < path.size()-1; i++) {
+        for (const ArrowData& arrow : arrowDataList) {
+            if (arrow.nodeStartID == path[i] && arrow.nodeEndID == path[i+1]) {
+                minFlow = qMin(minFlow, arrow.distance);
+                break;
+            }
+        }
+    }
+    return minFlow;
+}
+
+QString MainWindow::getAlgorithmDetails(const QString& algorithmName, const QList<int>& path) {
+    QString details;
+
+    if (algorithmName == "Ford-Fulkerson") {
+        details = "- Uses BFS to find augmenting paths\n";
+        details += "- Time complexity: O(E * max_flow)\n";
+        details += "- Residual graph updated after each iteration";
+    }
+    else if (algorithmName == "Edmonds-Karp") {
+        details = "- Specialization of Ford-Fulkerson\n";
+        details += "- Always finds shortest augmenting path\n";
+        details += "- Time complexity: O(V*E²)\n";
+        details += "- More efficient than basic Ford-Fulkerson";
+    }
+    else { // BFS
+        details = "- Explores all neighbors at current depth first\n";
+        details += "- Time complexity: O(V + E)\n";
+        details += "- Guarantees shortest path in unweighted graphs";
+    }
+
+    details += "\n\nPATH ANALYSIS:\n";
+    for (int i = 0; i < path.size()-1; i++) {
+        for (const ArrowData& arrow : arrowDataList) {
+            if (arrow.nodeStartID == path[i] && arrow.nodeEndID == path[i+1]) {
+                details += QString("%1 → %2: dist=%3, cons=%4\n")
+                               .arg(path[i]).arg(path[i+1])
+                               .arg(arrow.distance).arg(arrow.consumption);
+                break;
+            }
+        }
+    }
+
+    return details;
 }

@@ -80,10 +80,18 @@ private:
     void runFordFulkersonAlgorithm(int startNode, int endNode);
     void runEdmondsKarpAlgorithm(int startNode, int endNode);
     void logDebugMessage(const QString &message);
-    void visualizePath(const QList<int> &path);
+    void visualizePath(const QList<int>& path, const QString& algorithmName, const QVariant& additionalData);
     void runBFS(int startNode, int endNode);
     bool createArrow(QGraphicsLineItem* edge, QPointF start, QPointF end, double distance, double consumption);
     void runRandomizedBFS(int startNode, int endNode, int maxPaths = 5);
+    double calculatePathDistance(const QList<int>& path);
+    double calculatePathFlow(const QList<int>& path);
+    QString getAlgorithmDetails(const QString& algorithmName, const QList<int>& path);
+    QMap<QString, QVariant> calculatePathMetrics(const QList<int>& path);
+    void highlightPathOnScene(const QList<int>& path);
+    void resetSceneColors();
+
+
 
 };
 
