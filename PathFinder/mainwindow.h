@@ -109,6 +109,7 @@ private:
                                               const QList<QList<int>>& augmentingPaths,
                                               const QList<EdgeAnalysis>& edgeAnalyses);
     void highlightNode(int nodeId, const QColor& color);
+    void showEdmondsKarpResults(int startNode, int endNode, int maxFlow, const QList<QList<int>>& augmentingPaths, const QList<EdgeAnalysis>& edgeAnalyses);
 
 };
 

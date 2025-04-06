@@ -776,13 +776,12 @@ void MainWindow::highlightEdge(int from, int to, const QColor& color, int value,
 
 
 
-void MainWindow::runEdmondsKarpAlgorithm(int startNode, int endNode)
-{
+void MainWindow::runEdmondsKarpAlgorithm(int startNode, int endNode) {
     logDebugMessage("Running Edmonds-Karp Algorithm");
     qDebug() << "Running Edmonds-Karp Algorithm";
 
     // Verificăm dacă nodurile startNode și endNode sunt valide
-    int numNodes = arrowNodes.size();  // Sau orice număr de noduri din graful tău
+    int numNodes = arrowNodes.size();
     if (startNode < 1 || endNode < 1 || startNode > numNodes || endNode > numNodes) {
         qDebug() << "Invalid start or end node.";
         return;
@@ -807,6 +806,9 @@ void MainWindow::runEdmondsKarpAlgorithm(int startNode, int endNode)
 
     // Algoritmul Edmonds-Karp
     int maxFlow = 0;  // Fluxul maxim
+
+    // Vom salva drumurile augmentatoare
+    QList<QList<int>> augmentingPaths;
 
     // Căutăm un drum augmentator folosind BFS
     while (true) {
@@ -862,10 +864,106 @@ void MainWindow::runEdmondsKarpAlgorithm(int startNode, int endNode)
         }
 
         maxFlow += pathFlow;
+
+        // Adăugăm drumul augmentator în lista de drumuri
+        QList<int> augmentingPath;
+        currentNode = sink;
+        while (currentNode != source) {
+            augmentingPath.prepend(currentNode + 1);  // Adăugăm nodul în drum (convertim la 1-based)
+            currentNode = parent[currentNode];
+        }
+        augmentingPath.prepend(source + 1);  // Adăugăm și nodul sursă
+        augmentingPaths.append(augmentingPath);
     }
 
     qDebug() << "Max flow from node " << startNode << " to node " << endNode << ": " << maxFlow;
+
+    // Afișăm rezultatele cu drumurile augmentatoare
+    QList<EdgeAnalysis> edgeAnalyses;
+    for (int i = 0; i < numNodes; ++i) {
+        for (int j = 0; j < numNodes; ++j) {
+            if (capacity[i][j] > 0 || flow[i][j] != 0) {
+                int residual = capacity[i][j] - flow[i][j];
+                QString type;
+
+                if (flow[i][j] > 0 && capacity[i][j] == 0) {
+                    type = "Backward";
+                } else if (capacity[i][j] > 0 && flow[i][j] == capacity[i][j]) {
+                    type = "Saturated";
+                } else if (capacity[i][j] > 0 && flow[i][j] < capacity[i][j]) {
+                    type = "Forward";
+                } else {
+                    type = "Neutral";
+                }
+
+                edgeAnalyses.append({i + 1, j + 1, capacity[i][j], flow[i][j], residual, type});
+            }
+        }
+    }
+
+    // Afișăm rezultatele
+    showFordFulkersonResults(startNode, endNode, maxFlow, augmentingPaths, edgeAnalyses);
 }
+
+void MainWindow::showEdmondsKarpResults(int startNode, int endNode, int maxFlow, const QList<QList<int>>& augmentingPaths, const QList<EdgeAnalysis>& edgeAnalyses) {
+    // Crearea unui QDialog pentru a afisa rezultatele
+    QDialog* resultDialog = new QDialog(this);
+    resultDialog->setWindowTitle("Edmonds-Karp Algorithm Results");
+
+    // Layout pentru dialog
+    QVBoxLayout* layout = new QVBoxLayout(resultDialog);
+
+    // Etichete pentru fluxul maxim
+    QLabel* maxFlowLabel = new QLabel("Max Flow: " + QString::number(maxFlow), resultDialog);
+    layout->addWidget(maxFlowLabel);
+
+    // Etichete pentru drumurile augmentatoare
+    QLabel* augmentingPathsLabel = new QLabel("Augmenting Paths:", resultDialog);
+    layout->addWidget(augmentingPathsLabel);
+
+    // Afișăm drumurile augmentatoare
+    QString pathsStr;
+    for (int i = 0; i < augmentingPaths.size(); ++i) {
+        pathsStr += QString("Path %1: ").arg(i + 1);
+        for (int node : augmentingPaths[i]) {
+            pathsStr += QString::number(node) + " → ";
+        }
+        pathsStr.chop(3);  // Îndepărtăm ultima săgeată "→"
+        pathsStr += "\n";
+    }
+
+    QLabel* pathsDisplay = new QLabel(pathsStr, resultDialog);
+    layout->addWidget(pathsDisplay);
+
+    // Etichete pentru analiza muchiilor
+    QLabel* edgeAnalysisLabel = new QLabel("Edge Analysis:", resultDialog);
+    layout->addWidget(edgeAnalysisLabel);
+
+    // Afișăm analiza muchiilor
+    QString edgeAnalysisStr;
+    for (const EdgeAnalysis& analysis : edgeAnalyses) {
+        edgeAnalysisStr += QString("Edge %1 → %2: Capacity = %3, Flow = %4, Residual = %5, Type = %6\n")
+                               .arg(analysis.from)
+                               .arg(analysis.to)
+                               .arg(analysis.capacity)
+                               .arg(analysis.flow)
+                               .arg(analysis.residual)
+                               .arg(analysis.type);
+    }
+
+    QLabel* edgeAnalysisDisplay = new QLabel(edgeAnalysisStr, resultDialog);
+    layout->addWidget(edgeAnalysisDisplay);
+
+    // Buton de închidere
+    QPushButton* closeButton = new QPushButton("Close", resultDialog);
+    connect(closeButton, &QPushButton::clicked, resultDialog, &QDialog::accept);
+    layout->addWidget(closeButton);
+
+    resultDialog->setLayout(layout);
+    resultDialog->exec();
+}
+
+
 
 void MainWindow::logDebugMessage(const QString &message)
 {
