@@ -18,6 +18,7 @@
 #include <qboxlayout.h>
 #include <QTableWidget>
 #include <QHeaderView>
+#include <QStack>
 
 MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent)
@@ -443,6 +444,24 @@ void MainWindow::runAlgorithm()
     }
     else if (selectedAlgorithm == "Edmonds-Karp") {
         runEdmondsKarpAlgorithm(from, to);
+    }
+    else if (selectedAlgorithm == "Ahuja-Orlin Scaling") {
+        runAhujaOrlinScalingAlgorithm(from, to);
+    }
+    else if (selectedAlgorithm == "Ahuja-Orlin Shortest Path") {
+        runAhujaOrlinShortestPathAlgorithm(from, to);
+    }
+    else if (selectedAlgorithm == "Ahuja-Orlin Layered Network") {
+        runAhujaOrlinLayeredNetworkAlgorithm(from, to);
+    }
+    else if (selectedAlgorithm == "Gabow Scaling") {
+        runGabowScalingAlgorithm(from, to);
+    }
+    else if (selectedAlgorithm == "Generic Preflow") {
+        runGenericPreflowAlgorithm(from, to);
+    }
+    else if (selectedAlgorithm == "FIFO Preflow") {
+        runFIFOPreflowAlgorithm(from, to);
     }
 }
 
@@ -1330,4 +1349,991 @@ QString MainWindow::getAlgorithmDetails(const QString& algorithmName, const QLis
     }
 
     return details;
+}
+
+// Implementation of Ahuja-Orlin Scaling Algorithm
+void MainWindow::runAhujaOrlinScalingAlgorithm(int startNode, int endNode) {
+    logDebugMessage("Running Ahuja-Orlin Scaling Algorithm");
+
+    int numNodes = arrowNodes.size();
+    if (startNode < 1 || endNode < 1 || startNode > numNodes || endNode > numNodes) {
+        showWarning("Invalid start or end node");
+        return;
+    }
+
+    // Initialize data structures
+    QVector<QVector<int>> capacity(numNodes, QVector<int>(numNodes, 0));
+    QVector<QVector<int>> flow(numNodes, QVector<int>(numNodes, 0));
+    QVector<QVector<bool>> originalEdges(numNodes, QVector<bool>(numNodes, false));
+
+    // Populate capacity matrix
+    for (const ArrowData& arrowData : arrowDataList) {
+        int startID = arrowData.nodeStartID - 1;
+        int endID = arrowData.nodeEndID - 1;
+        capacity[startID][endID] = arrowData.distance;
+        originalEdges[startID][endID] = true;
+    }
+
+    int source = startNode - 1;
+    int sink = endNode - 1;
+    int maxFlow = 0;
+
+    // Find maximum capacity for scaling
+    int maxCapacity = 0;
+    for (int i = 0; i < numNodes; ++i) {
+        for (int j = 0; j < numNodes; ++j) {
+            if (capacity[i][j] > maxCapacity) {
+                maxCapacity = capacity[i][j];
+            }
+        }
+    }
+
+    // Scaling phases
+    for (int delta = 1; delta <= maxCapacity; delta *= 2) {
+        while (true) {
+            // BFS with delta scaling
+            QVector<int> parent(numNodes, -1);
+            QVector<bool> visited(numNodes, false);
+            QQueue<int> queue;
+            queue.enqueue(source);
+            visited[source] = true;
+
+            bool pathFound = false;
+            while (!queue.isEmpty() && !pathFound) {
+                int currentNode = queue.dequeue();
+
+                for (int neighbor = 0; neighbor < numNodes; ++neighbor) {
+                    int residual = capacity[currentNode][neighbor] - flow[currentNode][neighbor];
+                    if (!visited[neighbor] && residual >= delta) {
+                        parent[neighbor] = currentNode;
+                        visited[neighbor] = true;
+                        queue.enqueue(neighbor);
+
+                        if (neighbor == sink) {
+                            pathFound = true;
+                            break;
+                        }
+                    }
+                }
+            }
+
+            if (!pathFound) break;
+
+            // Reconstruct path and find minimum residual capacity
+            int pathFlow = INT_MAX;
+            int currentNode = sink;
+            while (currentNode != source) {
+                int prevNode = parent[currentNode];
+                pathFlow = qMin(pathFlow, capacity[prevNode][currentNode] - flow[prevNode][currentNode]);
+                currentNode = prevNode;
+            }
+
+            // Update flows
+            currentNode = sink;
+            while (currentNode != source) {
+                int prevNode = parent[currentNode];
+                flow[prevNode][currentNode] += pathFlow;
+                flow[currentNode][prevNode] -= pathFlow;
+                currentNode = prevNode;
+            }
+
+            maxFlow += pathFlow;
+        }
+    }
+
+    // Prepare results for visualization
+    QList<EdgeAnalysis> edgeAnalyses;
+    for (int i = 0; i < numNodes; ++i) {
+        for (int j = 0; j < numNodes; ++j) {
+            if (originalEdges[i][j] || flow[i][j] != 0) {
+                EdgeAnalysis analysis;
+                analysis.from = i + 1;
+                analysis.to = j + 1;
+                analysis.capacity = originalEdges[i][j] ? capacity[i][j] : 0;
+                analysis.flow = flow[i][j];
+                analysis.residual = originalEdges[i][j] ? capacity[i][j] - flow[i][j] : flow[j][i];
+
+                if (originalEdges[i][j]) {
+                    if (flow[i][j] < capacity[i][j]) {
+                        analysis.type = "Non-full forward edge";
+                    } else {
+                        analysis.type = "Saturated edge";
+                    }
+                } else {
+                    if (flow[j][i] > 0) {
+                        analysis.type = "Non-empty backward edge";
+                    } else {
+                        analysis.type = "Residual only";
+                    }
+                }
+
+                edgeAnalyses.append(analysis);
+            }
+        }
+    }
+
+    // Show results
+    showAhujaOrlinScalingResults(startNode, endNode, maxFlow, edgeAnalyses);
+    highlightResidualGraph(flow, capacity, originalEdges, startNode, endNode);
+}
+
+// Implementation of Ahuja-Orlin Shortest Path Algorithm
+void MainWindow::runAhujaOrlinShortestPathAlgorithm(int startNode, int endNode) {
+    logDebugMessage("Running Ahuja-Orlin Shortest Path Algorithm");
+
+    int numNodes = arrowNodes.size();
+    if (startNode < 1 || endNode < 1 || startNode > numNodes || endNode > numNodes) {
+        showWarning("Invalid start or end node");
+        return;
+    }
+
+    // Initialize data structures
+    QVector<QVector<int>> capacity(numNodes, QVector<int>(numNodes, 0));
+    QVector<QVector<int>> flow(numNodes, QVector<int>(numNodes, 0));
+    QVector<QVector<bool>> originalEdges(numNodes, QVector<bool>(numNodes, false));
+
+    // Populate capacity matrix
+    for (const ArrowData& arrowData : arrowDataList) {
+        int startID = arrowData.nodeStartID - 1;
+        int endID = arrowData.nodeEndID - 1;
+        capacity[startID][endID] = arrowData.distance;
+        originalEdges[startID][endID] = true;
+    }
+
+    int source = startNode - 1;
+    int sink = endNode - 1;
+    int maxFlow = 0;
+
+    while (true) {
+        // BFS to find shortest augmenting path
+        QVector<int> parent(numNodes, -1);
+        QVector<int> distance(numNodes, INT_MAX);
+        QQueue<int> queue;
+
+        queue.enqueue(source);
+        distance[source] = 0;
+
+        bool pathFound = false;
+        while (!queue.isEmpty() && !pathFound) {
+            int currentNode = queue.dequeue();
+
+            for (int neighbor = 0; neighbor < numNodes; ++neighbor) {
+                if (capacity[currentNode][neighbor] - flow[currentNode][neighbor] > 0 &&
+                    distance[neighbor] > distance[currentNode] + 1) {
+                    distance[neighbor] = distance[currentNode] + 1;
+                    parent[neighbor] = currentNode;
+                    queue.enqueue(neighbor);
+
+                    if (neighbor == sink) {
+                        pathFound = true;
+                        break;
+                    }
+                }
+            }
+        }
+
+        if (!pathFound) break;
+
+        // Find minimum residual capacity along the path
+        int pathFlow = INT_MAX;
+        int currentNode = sink;
+        while (currentNode != source) {
+            int prevNode = parent[currentNode];
+            pathFlow = qMin(pathFlow, capacity[prevNode][currentNode] - flow[prevNode][currentNode]);
+            currentNode = prevNode;
+        }
+
+        // Update flows
+        currentNode = sink;
+        while (currentNode != source) {
+            int prevNode = parent[currentNode];
+            flow[prevNode][currentNode] += pathFlow;
+            flow[currentNode][prevNode] -= pathFlow;
+            currentNode = prevNode;
+        }
+
+        maxFlow += pathFlow;
+    }
+
+    // Prepare results for visualization
+    QList<EdgeAnalysis> edgeAnalyses;
+    for (int i = 0; i < numNodes; ++i) {
+        for (int j = 0; j < numNodes; ++j) {
+            if (originalEdges[i][j] || flow[i][j] != 0) {
+                EdgeAnalysis analysis;
+                analysis.from = i + 1;
+                analysis.to = j + 1;
+                analysis.capacity = originalEdges[i][j] ? capacity[i][j] : 0;
+                analysis.flow = flow[i][j];
+                analysis.residual = originalEdges[i][j] ? capacity[i][j] - flow[i][j] : flow[j][i];
+
+                if (originalEdges[i][j]) {
+                    if (flow[i][j] < capacity[i][j]) {
+                        analysis.type = "Non-full forward edge";
+                    } else {
+                        analysis.type = "Saturated edge";
+                    }
+                } else {
+                    if (flow[j][i] > 0) {
+                        analysis.type = "Non-empty backward edge";
+                    } else {
+                        analysis.type = "Residual only";
+                    }
+                }
+
+                edgeAnalyses.append(analysis);
+            }
+        }
+    }
+
+    // Show results
+    showAhujaOrlinShortestPathResults(startNode, endNode, maxFlow, edgeAnalyses);
+    highlightResidualGraph(flow, capacity, originalEdges, startNode, endNode);
+}
+
+// Implementation of Ahuja-Orlin Layered Network Algorithm
+void MainWindow::runAhujaOrlinLayeredNetworkAlgorithm(int startNode, int endNode) {
+    logDebugMessage("Running Ahuja-Orlin Layered Network Algorithm");
+
+    int numNodes = arrowNodes.size();
+    if (startNode < 1 || endNode < 1 || startNode > numNodes || endNode > numNodes) {
+        showWarning("Invalid start or end node");
+        return;
+    }
+
+    // Initialize data structures
+    QVector<QVector<int>> capacity(numNodes, QVector<int>(numNodes, 0));
+    QVector<QVector<int>> flow(numNodes, QVector<int>(numNodes, 0));
+    QVector<QVector<bool>> originalEdges(numNodes, QVector<bool>(numNodes, false));
+
+    // Populate capacity matrix
+    for (const ArrowData& arrowData : arrowDataList) {
+        int startID = arrowData.nodeStartID - 1;
+        int endID = arrowData.nodeEndID - 1;
+        capacity[startID][endID] = arrowData.distance;
+        originalEdges[startID][endID] = true;
+    }
+
+    int source = startNode - 1;
+    int sink = endNode - 1;
+    int maxFlow = 0;
+
+    while (true) {
+        // Build layered network using BFS
+        QVector<int> level(numNodes, -1);
+        QQueue<int> queue;
+
+        queue.enqueue(source);
+        level[source] = 0;
+
+        bool sinkReached = false;
+        while (!queue.isEmpty() && !sinkReached) {
+            int currentNode = queue.dequeue();
+
+            for (int neighbor = 0; neighbor < numNodes; ++neighbor) {
+                if (level[neighbor] == -1 && capacity[currentNode][neighbor] - flow[currentNode][neighbor] > 0) {
+                    level[neighbor] = level[currentNode] + 1;
+                    queue.enqueue(neighbor);
+
+                    if (neighbor == sink) {
+                        sinkReached = true;
+                    }
+                }
+            }
+        }
+
+        if (level[sink] == -1) break; // No more augmenting paths
+
+        // Find blocking flow in the layered network
+        QVector<int> ptr(numNodes, 0);
+        while (true) {
+            QStack<int> stack;
+            stack.push(source);
+
+            bool pathFound = false;
+            while (!stack.isEmpty() && !pathFound) {
+                int currentNode = stack.top();
+
+                if (currentNode == sink) {
+                    pathFound = true;
+                    break;
+                }
+
+                while (ptr[currentNode] < numNodes) {
+                    int neighbor = ptr[currentNode]++;
+                    if (level[neighbor] == level[currentNode] + 1 &&
+                        capacity[currentNode][neighbor] - flow[currentNode][neighbor] > 0) {
+                        stack.push(neighbor);
+                        break;
+                    }
+                }
+
+                if (ptr[currentNode] == numNodes) {
+                    stack.pop();
+                    if (!stack.isEmpty()) {
+                        ptr[stack.top()] = 0;
+                    }
+                    break;
+                }
+            }
+
+            if (!pathFound) break;
+
+            // Find minimum residual capacity in the path
+            int pathFlow = INT_MAX;
+            for (int i = 0; i < stack.size() - 1; ++i) {
+                int u = stack[i];
+                int v = stack[i+1];
+                pathFlow = qMin(pathFlow, capacity[u][v] - flow[u][v]);
+            }
+
+            // Update flows
+            for (int i = 0; i < stack.size() - 1; ++i) {
+                int u = stack[i];
+                int v = stack[i+1];
+                flow[u][v] += pathFlow;
+                flow[v][u] -= pathFlow;
+            }
+
+            maxFlow += pathFlow;
+        }
+    }
+
+    // Prepare results for visualization
+    QList<EdgeAnalysis> edgeAnalyses;
+    for (int i = 0; i < numNodes; ++i) {
+        for (int j = 0; j < numNodes; ++j) {
+            if (originalEdges[i][j] || flow[i][j] != 0) {
+                EdgeAnalysis analysis;
+                analysis.from = i + 1;
+                analysis.to = j + 1;
+                analysis.capacity = originalEdges[i][j] ? capacity[i][j] : 0;
+                analysis.flow = flow[i][j];
+                analysis.residual = originalEdges[i][j] ? capacity[i][j] - flow[i][j] : flow[j][i];
+
+                if (originalEdges[i][j]) {
+                    if (flow[i][j] < capacity[i][j]) {
+                        analysis.type = "Non-full forward edge";
+                    } else {
+                        analysis.type = "Saturated edge";
+                    }
+                } else {
+                    if (flow[j][i] > 0) {
+                        analysis.type = "Non-empty backward edge";
+                    } else {
+                        analysis.type = "Residual only";
+                    }
+                }
+
+                edgeAnalyses.append(analysis);
+            }
+        }
+    }
+
+    // Show results
+    showAhujaOrlinLayeredNetworkResults(startNode, endNode, maxFlow, edgeAnalyses);
+    highlightResidualGraph(flow, capacity, originalEdges, startNode, endNode);
+}
+
+// Implementation of Gabow Scaling Algorithm
+void MainWindow::runGabowScalingAlgorithm(int startNode, int endNode) {
+    logDebugMessage("Running Gabow Scaling Algorithm");
+
+    int numNodes = arrowNodes.size();
+    if (startNode < 1 || endNode < 1 || startNode > numNodes || endNode > numNodes) {
+        showWarning("Invalid start or end node");
+        return;
+    }
+
+    // Initialize data structures
+    QVector<QVector<int>> capacity(numNodes, QVector<int>(numNodes, 0));
+    QVector<QVector<int>> flow(numNodes, QVector<int>(numNodes, 0));
+    QVector<QVector<bool>> originalEdges(numNodes, QVector<bool>(numNodes, false));
+
+    // Populate capacity matrix
+    for (const ArrowData& arrowData : arrowDataList) {
+        int startID = arrowData.nodeStartID - 1;
+        int endID = arrowData.nodeEndID - 1;
+        capacity[startID][endID] = arrowData.distance;
+        originalEdges[startID][endID] = true;
+    }
+
+    int source = startNode - 1;
+    int sink = endNode - 1;
+    int maxFlow = 0;
+
+    // Find maximum capacity for scaling
+    int maxCapacity = 0;
+    for (int i = 0; i < numNodes; ++i) {
+        for (int j = 0; j < numNodes; ++j) {
+            if (capacity[i][j] > maxCapacity) {
+                maxCapacity = capacity[i][j];
+            }
+        }
+    }
+
+    // Scaling phases
+    for (int delta = 1; delta <= maxCapacity; delta *= 2) {
+        while (true) {
+            // BFS with delta scaling
+            QVector<int> parent(numNodes, -1);
+            QVector<bool> visited(numNodes, false);
+            QQueue<int> queue;
+            queue.enqueue(source);
+            visited[source] = true;
+
+            bool pathFound = false;
+            while (!queue.isEmpty() && !pathFound) {
+                int currentNode = queue.dequeue();
+
+                for (int neighbor = 0; neighbor < numNodes; ++neighbor) {
+                    int residual = capacity[currentNode][neighbor] - flow[currentNode][neighbor];
+                    if (!visited[neighbor] && residual >= delta) {
+                        parent[neighbor] = currentNode;
+                        visited[neighbor] = true;
+                        queue.enqueue(neighbor);
+
+                        if (neighbor == sink) {
+                            pathFound = true;
+                            break;
+                        }
+                    }
+                }
+            }
+
+            if (!pathFound) break;
+
+            // Reconstruct path and find minimum residual capacity
+            int pathFlow = INT_MAX;
+            int currentNode = sink;
+            while (currentNode != source) {
+                int prevNode = parent[currentNode];
+                pathFlow = qMin(pathFlow, capacity[prevNode][currentNode] - flow[prevNode][currentNode]);
+                currentNode = prevNode;
+            }
+
+            // Update flows
+            currentNode = sink;
+            while (currentNode != source) {
+                int prevNode = parent[currentNode];
+                flow[prevNode][currentNode] += pathFlow;
+                flow[currentNode][prevNode] -= pathFlow;
+                currentNode = prevNode;
+            }
+
+            maxFlow += pathFlow;
+        }
+    }
+
+    // Prepare results for visualization
+    QList<EdgeAnalysis> edgeAnalyses;
+    for (int i = 0; i < numNodes; ++i) {
+        for (int j = 0; j < numNodes; ++j) {
+            if (originalEdges[i][j] || flow[i][j] != 0) {
+                EdgeAnalysis analysis;
+                analysis.from = i + 1;
+                analysis.to = j + 1;
+                analysis.capacity = originalEdges[i][j] ? capacity[i][j] : 0;
+                analysis.flow = flow[i][j];
+                analysis.residual = originalEdges[i][j] ? capacity[i][j] - flow[i][j] : flow[j][i];
+
+                if (originalEdges[i][j]) {
+                    if (flow[i][j] < capacity[i][j]) {
+                        analysis.type = "Non-full forward edge";
+                    } else {
+                        analysis.type = "Saturated edge";
+                    }
+                } else {
+                    if (flow[j][i] > 0) {
+                        analysis.type = "Non-empty backward edge";
+                    } else {
+                        analysis.type = "Residual only";
+                    }
+                }
+
+                edgeAnalyses.append(analysis);
+            }
+        }
+    }
+
+    // Show results
+    showGabowScalingResults(startNode, endNode, maxFlow, edgeAnalyses);
+    highlightResidualGraph(flow, capacity, originalEdges, startNode, endNode);
+}
+
+// Implementation of Generic Preflow Algorithm
+void MainWindow::runGenericPreflowAlgorithm(int startNode, int endNode) {
+    logDebugMessage("Running Generic Preflow Algorithm");
+
+    int numNodes = arrowNodes.size();
+    if (startNode < 1 || endNode < 1 || startNode > numNodes || endNode > numNodes) {
+        showWarning("Invalid start or end node");
+        return;
+    }
+
+    // Initialize data structures
+    QVector<QVector<int>> capacity(numNodes, QVector<int>(numNodes, 0));
+    QVector<QVector<int>> flow(numNodes, QVector<int>(numNodes, 0));
+    QVector<QVector<bool>> originalEdges(numNodes, QVector<bool>(numNodes, false));
+    QVector<int> height(numNodes, 0);
+    QVector<int> excess(numNodes, 0);
+
+    // Populate capacity matrix
+    for (const ArrowData& arrowData : arrowDataList) {
+        int startID = arrowData.nodeStartID - 1;
+        int endID = arrowData.nodeEndID - 1;
+        capacity[startID][endID] = arrowData.distance;
+        originalEdges[startID][endID] = true;
+    }
+
+    int source = startNode - 1;
+    int sink = endNode - 1;
+
+    // Initialize preflow
+    height[source] = numNodes;
+    for (int v = 0; v < numNodes; ++v) {
+        if (capacity[source][v] > 0) {
+            flow[source][v] = capacity[source][v];
+            flow[v][source] = -flow[source][v];
+            excess[v] = flow[source][v];
+            excess[source] -= flow[source][v];
+        }
+    }
+
+    // Main loop
+    while (true) {
+        bool activeFound = false;
+        for (int u = 0; u < numNodes; ++u) {
+            if (u == source || u == sink || excess[u] <= 0) continue;
+
+            activeFound = true;
+            bool pushed = false;
+
+            // Try to push flow to admissible edges
+            for (int v = 0; v < numNodes && !pushed; ++v) {
+                if (height[u] == height[v] + 1 && capacity[u][v] - flow[u][v] > 0) {
+                    int delta = qMin(excess[u], capacity[u][v] - flow[u][v]);
+                    flow[u][v] += delta;
+                    flow[v][u] -= delta;
+                    excess[u] -= delta;
+                    excess[v] += delta;
+                    pushed = true;
+                }
+            }
+
+            // If couldn't push, relabel
+            if (!pushed) {
+                int minHeight = INT_MAX;
+                for (int v = 0; v < numNodes; ++v) {
+                    if (capacity[u][v] - flow[u][v] > 0) {
+                        minHeight = qMin(minHeight, height[v]);
+                    }
+                }
+                if (minHeight != INT_MAX) {
+                    height[u] = minHeight + 1;
+                }
+            }
+        }
+
+        if (!activeFound) break;
+    }
+
+    // Calculate max flow
+    int maxFlow = 0;
+    for (int v = 0; v < numNodes; ++v) {
+        maxFlow += flow[source][v];
+    }
+
+    // Prepare results for visualization
+    QList<EdgeAnalysis> edgeAnalyses;
+    for (int i = 0; i < numNodes; ++i) {
+        for (int j = 0; j < numNodes; ++j) {
+            if (originalEdges[i][j] || flow[i][j] != 0) {
+                EdgeAnalysis analysis;
+                analysis.from = i + 1;
+                analysis.to = j + 1;
+                analysis.capacity = originalEdges[i][j] ? capacity[i][j] : 0;
+                analysis.flow = flow[i][j];
+                analysis.residual = originalEdges[i][j] ? capacity[i][j] - flow[i][j] : flow[j][i];
+
+                if (originalEdges[i][j]) {
+                    if (flow[i][j] < capacity[i][j]) {
+                        analysis.type = "Non-full forward edge";
+                    } else {
+                        analysis.type = "Saturated edge";
+                    }
+                } else {
+                    if (flow[j][i] > 0) {
+                        analysis.type = "Non-empty backward edge";
+                    } else {
+                        analysis.type = "Residual only";
+                    }
+                }
+
+                edgeAnalyses.append(analysis);
+            }
+        }
+    }
+
+    // Show results
+    showGenericPreflowResults(startNode, endNode, maxFlow, edgeAnalyses);
+    highlightResidualGraph(flow, capacity, originalEdges, startNode, endNode);
+}
+
+// Implementation of FIFO Preflow Algorithm
+void MainWindow::runFIFOPreflowAlgorithm(int startNode, int endNode) {
+    logDebugMessage("Running FIFO Preflow Algorithm");
+
+    int numNodes = arrowNodes.size();
+    if (startNode < 1 || endNode < 1 || startNode > numNodes || endNode > numNodes) {
+        showWarning("Invalid start or end node");
+        return;
+    }
+
+    // Initialize data structures
+    QVector<QVector<int>> capacity(numNodes, QVector<int>(numNodes, 0));
+    QVector<QVector<int>> flow(numNodes, QVector<int>(numNodes, 0));
+    QVector<QVector<bool>> originalEdges(numNodes, QVector<bool>(numNodes, false));
+    QVector<int> height(numNodes, 0);
+    QVector<int> excess(numNodes, 0);
+    QQueue<int> activeNodes;
+
+    // Populate capacity matrix
+    for (const ArrowData& arrowData : arrowDataList) {
+        int startID = arrowData.nodeStartID - 1;
+        int endID = arrowData.nodeEndID - 1;
+        capacity[startID][endID] = arrowData.distance;
+        originalEdges[startID][endID] = true;
+    }
+
+    int source = startNode - 1;
+    int sink = endNode - 1;
+
+    // Initialize preflow
+    height[source] = numNodes;
+    for (int v = 0; v < numNodes; ++v) {
+        if (capacity[source][v] > 0) {
+            flow[source][v] = capacity[source][v];
+            flow[v][source] = -flow[source][v];
+            excess[v] = flow[source][v];
+            if (v != sink) {
+                activeNodes.enqueue(v);
+            }
+        }
+    }
+
+    // Main loop
+    while (!activeNodes.isEmpty()) {
+        int u = activeNodes.dequeue();
+
+        // Try to push flow to admissible edges
+        for (int v = 0; v < numNodes && excess[u] > 0; ++v) {
+            if (height[u] == height[v] + 1 && capacity[u][v] - flow[u][v] > 0) {
+                int delta = qMin(excess[u], capacity[u][v] - flow[u][v]);
+                flow[u][v] += delta;
+                flow[v][u] -= delta;
+                excess[u] -= delta;
+                excess[v] += delta;
+
+                if (v != source && v != sink && excess[v] == delta) {
+                    activeNodes.enqueue(v);
+                }
+            }
+        }
+
+        // If still has excess, relabel and requeue
+        if (excess[u] > 0) {
+            int minHeight = INT_MAX;
+            for (int v = 0; v < numNodes; ++v) {
+                if (capacity[u][v] - flow[u][v] > 0) {
+                    minHeight = qMin(minHeight, height[v]);
+                }
+            }
+            if (minHeight != INT_MAX) {
+                height[u] = minHeight + 1;
+                activeNodes.enqueue(u);
+            }
+        }
+    }
+
+    // Calculate max flow
+    int maxFlow = 0;
+    for (int v = 0; v < numNodes; ++v) {
+        maxFlow += flow[source][v];
+    }
+
+    // Prepare results for visualization
+    QList<EdgeAnalysis> edgeAnalyses;
+    for (int i = 0; i < numNodes; ++i) {
+        for (int j = 0; j < numNodes; ++j) {
+            if (originalEdges[i][j] || flow[i][j] != 0) {
+                EdgeAnalysis analysis;
+                analysis.from = i + 1;
+                analysis.to = j + 1;
+                analysis.capacity = originalEdges[i][j] ? capacity[i][j] : 0;
+                analysis.flow = flow[i][j];
+                analysis.residual = originalEdges[i][j] ? capacity[i][j] - flow[i][j] : flow[j][i];
+
+                if (originalEdges[i][j]) {
+                    if (flow[i][j] < capacity[i][j]) {
+                        analysis.type = "Non-full forward edge";
+                    } else {
+                        analysis.type = "Saturated edge";
+                    }
+                } else {
+                    if (flow[j][i] > 0) {
+                        analysis.type = "Non-empty backward edge";
+                    } else {
+                        analysis.type = "Residual only";
+                    }
+                }
+
+                edgeAnalyses.append(analysis);
+            }
+        }
+    }
+
+    // Show results
+    showFIFOPreflowResults(startNode, endNode, maxFlow, edgeAnalyses);
+    highlightResidualGraph(flow, capacity, originalEdges, startNode, endNode);
+}
+
+void MainWindow::showAhujaOrlinScalingResults(int startNodeId, int endNodeId, int maxFlow, const QList<EdgeAnalysis>& edgeAnalyses)
+{
+    QDialog *resultsDialog = new QDialog(this);
+    resultsDialog->setWindowTitle("Ahuja-Orlin Scaling Algorithm Results");
+    QVBoxLayout *layout = new QVBoxLayout(resultsDialog);
+
+    QTextEdit *resultsText = new QTextEdit(resultsDialog);
+    resultsText->setReadOnly(true);
+    QString content = QString("Ahuja-Orlin Scaling Algorithm\n\n");
+    content += QString("Start Node: %1\nEnd Node: %2\n").arg(startNodeId).arg(endNodeId);
+    content += QString("Maximum Flow: %1\n\n").arg(maxFlow);
+    content += "Edge Analysis:\n";
+    if (edgeAnalyses.isEmpty()) {
+        content += "No edge analysis data available.\n";
+    } else {
+        QTableWidget *edgeTable = new QTableWidget(edgeAnalyses.size(), 6, resultsDialog);
+        edgeTable->setHorizontalHeaderLabels({"From", "To", "Capacity", "Flow", "Residual", "Type"});
+        for (int i = 0; i < edgeAnalyses.size(); ++i) {
+            const EdgeAnalysis& edge = edgeAnalyses[i];
+            edgeTable->setItem(i, 0, new QTableWidgetItem(QString::number(edge.from)));
+            edgeTable->setItem(i, 1, new QTableWidgetItem(QString::number(edge.to)));
+            edgeTable->setItem(i, 2, new QTableWidgetItem(QString::number(edge.capacity)));
+            edgeTable->setItem(i, 3, new QTableWidgetItem(QString::number(edge.flow)));
+            edgeTable->setItem(i, 4, new QTableWidgetItem(QString::number(edge.residual)));
+            edgeTable->setItem(i, 5, new QTableWidgetItem(edge.type));
+        }
+        edgeTable->horizontalHeader()->setSectionResizeMode(QHeaderView::Stretch);
+        layout->addWidget(edgeTable);
+    }
+    resultsText->setText(content);
+    layout->addWidget(resultsText);
+
+    QPushButton *closeButton = new QPushButton("Close", resultsDialog);
+    connect(closeButton, &QPushButton::clicked, resultsDialog, &QDialog::accept);
+    layout->addWidget(closeButton);
+
+    resultsDialog->exec();
+    delete resultsDialog;
+}
+
+void MainWindow::showAhujaOrlinShortestPathResults(int startNodeId, int endNodeId, int maxFlow, const QList<EdgeAnalysis>& edgeAnalyses)
+{
+    QDialog *resultsDialog = new QDialog(this);
+    resultsDialog->setWindowTitle("Ahuja-Orlin Shortest Path Algorithm Results");
+    QVBoxLayout *layout = new QVBoxLayout(resultsDialog);
+
+    QTextEdit *resultsText = new QTextEdit(resultsDialog);
+    resultsText->setReadOnly(true);
+    QString content = QString("Ahuja-Orlin Shortest Path Algorithm\n\n");
+    content += QString("Start Node: %1\nEnd Node: %2\n").arg(startNodeId).arg(endNodeId);
+    content += QString("Maximum Flow: %1\n\n").arg(maxFlow);
+    content += "Edge Analysis:\n";
+    if (edgeAnalyses.isEmpty()) {
+        content += "No edge analysis data available.\n";
+    } else {
+        QTableWidget *edgeTable = new QTableWidget(edgeAnalyses.size(), 6, resultsDialog);
+        edgeTable->setHorizontalHeaderLabels({"From", "To", "Capacity", "Flow", "Residual", "Type"});
+        for (int i = 0; i < edgeAnalyses.size(); ++i) {
+            const EdgeAnalysis& edge = edgeAnalyses[i];
+            edgeTable->setItem(i, 0, new QTableWidgetItem(QString::number(edge.from)));
+            edgeTable->setItem(i, 1, new QTableWidgetItem(QString::number(edge.to)));
+            edgeTable->setItem(i, 2, new QTableWidgetItem(QString::number(edge.capacity)));
+            edgeTable->setItem(i, 3, new QTableWidgetItem(QString::number(edge.flow)));
+            edgeTable->setItem(i, 4, new QTableWidgetItem(QString::number(edge.residual)));
+            edgeTable->setItem(i, 5, new QTableWidgetItem(edge.type));
+        }
+        edgeTable->horizontalHeader()->setSectionResizeMode(QHeaderView::Stretch);
+        layout->addWidget(edgeTable);
+    }
+    resultsText->setText(content);
+    layout->addWidget(resultsText);
+
+    QPushButton *closeButton = new QPushButton("Close", resultsDialog);
+    connect(closeButton, &QPushButton::clicked, resultsDialog, &QDialog::accept);
+    layout->addWidget(closeButton);
+
+    resultsDialog->exec();
+    delete resultsDialog;
+}
+
+void MainWindow::showAhujaOrlinLayeredNetworkResults(int startNodeId, int endNodeId, int maxFlow, const QList<EdgeAnalysis>& edgeAnalyses)
+{
+    QDialog *resultsDialog = new QDialog(this);
+    resultsDialog->setWindowTitle("Ahuja-Orlin Layered Network Algorithm Results");
+    QVBoxLayout *layout = new QVBoxLayout(resultsDialog);
+
+    QTextEdit *resultsText = new QTextEdit(resultsDialog);
+    resultsText->setReadOnly(true);
+    QString content = QString("Ahuja-Orlin Layered Network Algorithm\n\n");
+    content += QString("Start Node: %1\nEnd Node: %2\n").arg(startNodeId).arg(endNodeId);
+    content += QString("Maximum Flow: %1\n\n").arg(maxFlow);
+    content += "Edge Analysis:\n";
+    if (edgeAnalyses.isEmpty()) {
+        content += "No edge analysis data available.\n";
+    } else {
+        QTableWidget *edgeTable = new QTableWidget(edgeAnalyses.size(), 6, resultsDialog);
+        edgeTable->setHorizontalHeaderLabels({"From", "To", "Capacity", "Flow", "Residual", "Type"});
+        for (int i = 0; i < edgeAnalyses.size(); ++i) {
+            const EdgeAnalysis& edge = edgeAnalyses[i];
+            edgeTable->setItem(i, 0, new QTableWidgetItem(QString::number(edge.from)));
+            edgeTable->setItem(i, 1, new QTableWidgetItem(QString::number(edge.to)));
+            edgeTable->setItem(i, 2, new QTableWidgetItem(QString::number(edge.capacity)));
+            edgeTable->setItem(i, 3, new QTableWidgetItem(QString::number(edge.flow)));
+            edgeTable->setItem(i, 4, new QTableWidgetItem(QString::number(edge.residual)));
+            edgeTable->setItem(i, 5, new QTableWidgetItem(edge.type));
+        }
+        edgeTable->horizontalHeader()->setSectionResizeMode(QHeaderView::Stretch);
+        layout->addWidget(edgeTable);
+    }
+    resultsText->setText(content);
+    layout->addWidget(resultsText);
+
+    QPushButton *closeButton = new QPushButton("Close", resultsDialog);
+    connect(closeButton, &QPushButton::clicked, resultsDialog, &QDialog::accept);
+    layout->addWidget(closeButton);
+
+    resultsDialog->exec();
+    delete resultsDialog;
+}
+
+void MainWindow::showGabowScalingResults(int startNodeId, int endNodeId, int maxFlow, const QList<EdgeAnalysis>& edgeAnalyses)
+{
+    QDialog *resultsDialog = new QDialog(this);
+    resultsDialog->setWindowTitle("Gabow Scaling Algorithm Results");
+    QVBoxLayout *layout = new QVBoxLayout(resultsDialog);
+
+    QTextEdit *resultsText = new QTextEdit(resultsDialog);
+    resultsText->setReadOnly(true);
+    QString content = QString("Gabow Scaling Algorithm\n\n");
+    content += QString("Start Node: %1\nEnd Node: %2\n").arg(startNodeId).arg(endNodeId);
+    content += QString("Maximum Flow: %1\n\n").arg(maxFlow);
+    content += "Edge Analysis:\n";
+    if (edgeAnalyses.isEmpty()) {
+        content += "No edge analysis data available.\n";
+    } else {
+        QTableWidget *edgeTable = new QTableWidget(edgeAnalyses.size(), 6, resultsDialog);
+        edgeTable->setHorizontalHeaderLabels({"From", "To", "Capacity", "Flow", "Residual", "Type"});
+        for (int i = 0; i < edgeAnalyses.size(); ++i) {
+            const EdgeAnalysis& edge = edgeAnalyses[i];
+            edgeTable->setItem(i, 0, new QTableWidgetItem(QString::number(edge.from)));
+            edgeTable->setItem(i, 1, new QTableWidgetItem(QString::number(edge.to)));
+            edgeTable->setItem(i, 2, new QTableWidgetItem(QString::number(edge.capacity)));
+            edgeTable->setItem(i, 3, new QTableWidgetItem(QString::number(edge.flow)));
+            edgeTable->setItem(i, 4, new QTableWidgetItem(QString::number(edge.residual)));
+            edgeTable->setItem(i, 5, new QTableWidgetItem(edge.type));
+        }
+        edgeTable->horizontalHeader()->setSectionResizeMode(QHeaderView::Stretch);
+        layout->addWidget(edgeTable);
+    }
+    resultsText->setText(content);
+    layout->addWidget(resultsText);
+
+    QPushButton *closeButton = new QPushButton("Close", resultsDialog);
+    connect(closeButton, &QPushButton::clicked, resultsDialog, &QDialog::accept);
+    layout->addWidget(closeButton);
+
+    resultsDialog->exec();
+    delete resultsDialog;
+}
+
+void MainWindow::showGenericPreflowResults(int startNodeId, int endNodeId, int maxFlow, const QList<EdgeAnalysis>& edgeAnalyses)
+{
+    QDialog *resultsDialog = new QDialog(this);
+    resultsDialog->setWindowTitle("Generic Preflow-Push Relabel Algorithm Results");
+    QVBoxLayout *layout = new QVBoxLayout(resultsDialog);
+
+    QTextEdit *resultsText = new QTextEdit(resultsDialog);
+    resultsText->setReadOnly(true);
+    QString content = QString("Generic Preflow-Push Relabel Algorithm\n\n");
+    content += QString("Start Node: %1\nEnd Node: %2\n").arg(startNodeId).arg(endNodeId);
+    content += QString("Maximum Flow: %1\n\n").arg(maxFlow);
+    content += "Edge Analysis:\n";
+    if (edgeAnalyses.isEmpty()) {
+        content += "No edge analysis data available.\n";
+    } else {
+        QTableWidget *edgeTable = new QTableWidget(edgeAnalyses.size(), 6, resultsDialog);
+        edgeTable->setHorizontalHeaderLabels({"From", "To", "Capacity", "Flow", "Residual", "Type"});
+        for (int i = 0; i < edgeAnalyses.size(); ++i) {
+            const EdgeAnalysis& edge = edgeAnalyses[i];
+            edgeTable->setItem(i, 0, new QTableWidgetItem(QString::number(edge.from)));
+            edgeTable->setItem(i, 1, new QTableWidgetItem(QString::number(edge.to)));
+            edgeTable->setItem(i, 2, new QTableWidgetItem(QString::number(edge.capacity)));
+            edgeTable->setItem(i, 3, new QTableWidgetItem(QString::number(edge.flow)));
+            edgeTable->setItem(i, 4, new QTableWidgetItem(QString::number(edge.residual)));
+            edgeTable->setItem(i, 5, new QTableWidgetItem(edge.type));
+        }
+        edgeTable->horizontalHeader()->setSectionResizeMode(QHeaderView::Stretch);
+        layout->addWidget(edgeTable);
+    }
+    resultsText->setText(content);
+    layout->addWidget(resultsText);
+
+    QPushButton *closeButton = new QPushButton("Close", resultsDialog);
+    connect(closeButton, &QPushButton::clicked, resultsDialog, &QDialog::accept);
+    layout->addWidget(closeButton);
+
+    resultsDialog->exec();
+    delete resultsDialog;
+}
+
+void MainWindow::showFIFOPreflowResults(int startNodeId, int endNodeId, int maxFlow, const QList<EdgeAnalysis>& edgeAnalyses)
+{
+    QDialog *resultsDialog = new QDialog(this);
+    resultsDialog->setWindowTitle("FIFO Preflow-Push Relabel Algorithm Results");
+    QVBoxLayout *layout = new QVBoxLayout(resultsDialog);
+
+    QTextEdit *resultsText = new QTextEdit(resultsDialog);
+    resultsText->setReadOnly(true);
+    QString content = QString("FIFO Preflow-Push Relabel Algorithm\n\n");
+    content += QString("Start Node: %1\nEnd Node: %2\n").arg(startNodeId).arg(endNodeId);
+    content += QString("Maximum Flow: %1\n\n").arg(maxFlow);
+    content += "Edge Analysis:\n";
+    if (edgeAnalyses.isEmpty()) {
+        content += "No edge analysis data available.\n";
+    } else {
+        QTableWidget *edgeTable = new QTableWidget(edgeAnalyses.size(), 6, resultsDialog);
+        edgeTable->setHorizontalHeaderLabels({"From", "To", "Capacity", "Flow", "Residual", "Type"});
+        for (int i = 0; i < edgeAnalyses.size(); ++i) {
+            const EdgeAnalysis& edge = edgeAnalyses[i];
+            edgeTable->setItem(i, 0, new QTableWidgetItem(QString::number(edge.from)));
+            edgeTable->setItem(i, 1, new QTableWidgetItem(QString::number(edge.to)));
+            edgeTable->setItem(i, 2, new QTableWidgetItem(QString::number(edge.capacity)));
+            edgeTable->setItem(i, 3, new QTableWidgetItem(QString::number(edge.flow)));
+            edgeTable->setItem(i, 4, new QTableWidgetItem(QString::number(edge.residual)));
+            edgeTable->setItem(i, 5, new QTableWidgetItem(edge.type));
+        }
+        edgeTable->horizontalHeader()->setSectionResizeMode(QHeaderView::Stretch);
+        layout->addWidget(edgeTable);
+    }
+    resultsText->setText(content);
+    layout->addWidget(resultsText);
+
+    QPushButton *closeButton = new QPushButton("Close", resultsDialog);
+    connect(closeButton, &QPushButton::clicked, resultsDialog, &QDialog::accept);
+    layout->addWidget(closeButton);
+
+    resultsDialog->exec();
+    delete resultsDialog;
 }

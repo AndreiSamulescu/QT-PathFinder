@@ -134,8 +134,7 @@
        <string>Run Algorithm</string>
       </property>
      </widget>
-	 
-	 <widget class="QPushButton" name="clearCanvasButton">
+     <widget class="QPushButton" name="clearCanvasButton">
       <property name="geometry">
        <rect>
         <x>10</x>
@@ -144,11 +143,11 @@
         <height>30</height>
        </rect>
       </property>
-      <property name="text">
-       <string>Clear Canvas</string>
-      </property>
       <property name="toolTip">
        <string>Remove all nodes and edges</string>
+      </property>
+      <property name="text">
+       <string>Clear Canvas</string>
       </property>
      </widget>
      <widget class="QComboBox" name="algorithmComboBox">
@@ -156,7 +155,7 @@
        <rect>
         <x>10</x>
         <y>90</y>
-        <width>150</width>
+        <width>200</width>
         <height>30</height>
        </rect>
       </property>
@@ -182,6 +181,36 @@
       <item>
        <property name="text">
         <string>Edmonds-Karp</string>
+       </property>
+      </item>
+      <item>
+       <property name="text">
+        <string>Ahuja-Orlin Scaling</string>
+       </property>
+      </item>
+      <item>
+       <property name="text">
+        <string>Ahuja-Orlin Shortest Path</string>
+       </property>
+      </item>
+      <item>
+       <property name="text">
+        <string>Ahuja-Orlin Layered Network</string>
+       </property>
+      </item>
+      <item>
+       <property name="text">
+        <string>Gabow Scaling</string>
+       </property>
+      </item>
+      <item>
+       <property name="text">
+        <string>Generic Preflow</string>
+       </property>
+      </item>
+      <item>
+       <property name="text">
+        <string>FIFO Preflow</string>
        </property>
       </item>
      </widget>

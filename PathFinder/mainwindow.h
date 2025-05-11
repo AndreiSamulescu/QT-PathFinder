@@ -46,9 +46,6 @@ struct ArrowNode{
 
 QT_BEGIN_NAMESPACE
 namespace Ui {
-
-
-
 class MainWindow;
 }
 QT_END_NAMESPACE
@@ -88,7 +85,23 @@ private:
     bool edgeExists(QGraphicsEllipseItem* node1, QGraphicsEllipseItem* node2);
     void runGenericAlgorithm(int startNode, int endNode);
     void runFordFulkersonAlgorithm(int startNode, int endNode);
+    void showFordFulkersonResults(int startNode, int endNode, int maxFlow,
+                                  const QList<QList<int>>& augmentingPaths,
+                                  const QList<EdgeAnalysis>& edgeAnalyses);
     void runEdmondsKarpAlgorithm(int startNode, int endNode);
+    void showEdmondsKarpResults(int startNode, int endNode, int maxFlow, const QList<QList<int>>& augmentingPaths, const QList<EdgeAnalysis>& edgeAnalyses);
+    void runAhujaOrlinScalingAlgorithm(int startNode, int endNode);
+    void showAhujaOrlinScalingResults(int startNode, int endNode, int maxFlow, const QList<EdgeAnalysis>& edgeAnalyses);
+    void runAhujaOrlinShortestPathAlgorithm(int startNode, int endNode);
+    void showAhujaOrlinShortestPathResults(int startNode, int endNode, int maxFlow, const QList<EdgeAnalysis>& edgeAnalyses);
+    void runAhujaOrlinLayeredNetworkAlgorithm(int startNode, int endNode);
+    void showAhujaOrlinLayeredNetworkResults(int startNode, int endNode, int maxFlow, const QList<EdgeAnalysis>& edgeAnalyses);
+    void runGabowScalingAlgorithm(int startNode, int endNode);
+    void showGabowScalingResults(int startNode, int endNode, int maxFlow, const QList<EdgeAnalysis>& edgeAnalyses);
+    void runGenericPreflowAlgorithm(int startNode, int endNode);
+    void showGenericPreflowResults(int startNodeId, int endNodeId, int maxFlow, const QList<EdgeAnalysis>& edgeAnalyses);
+    void runFIFOPreflowAlgorithm(int startNode, int endNode);
+    void showFIFOPreflowResults(int startNodeId, int endNodeId, int maxFlow, const QList<EdgeAnalysis>& edgeAnalyses);
     void logDebugMessage(const QString &message);
     void visualizePath(const QList<int>& path, const QString& algorithmName, const QVariant& additionalData);
     void runBFS(int startNode, int endNode);
@@ -101,15 +114,11 @@ private:
     void highlightPathOnScene(const QList<int>& path);
     void resetSceneColors();
     void highlightResidualGraph(const QVector<QVector<int>>& flow,
-                                            const QVector<QVector<int>>& capacity,
-                                            const QVector<QVector<bool>>& originalEdges,
-                                            int startNode, int endNode);
+                                const QVector<QVector<int>>& capacity,
+                                const QVector<QVector<bool>>& originalEdges,
+                                int startNode, int endNode);
     void highlightEdge(int from, int to, const QColor& color, int value, const QString& label);
-    void showFordFulkersonResults(int startNode, int endNode, int maxFlow,
-                                              const QList<QList<int>>& augmentingPaths,
-                                              const QList<EdgeAnalysis>& edgeAnalyses);
     void highlightNode(int nodeId, const QColor& color);
-    void showEdmondsKarpResults(int startNode, int endNode, int maxFlow, const QList<QList<int>>& augmentingPaths, const QList<EdgeAnalysis>& edgeAnalyses);
 
 };
 
