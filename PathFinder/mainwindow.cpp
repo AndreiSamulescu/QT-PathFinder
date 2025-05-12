@@ -1600,7 +1600,6 @@ void MainWindow::runAhujaOrlinShortestPathAlgorithm(int startNode, int endNode) 
     highlightResidualGraph(flow, capacity, originalEdges, startNode, endNode);
 }
 
-// Implementation of Ahuja-Orlin Layered Network Algorithm
 void MainWindow::runAhujaOrlinLayeredNetworkAlgorithm(int startNode, int endNode) {
     logDebugMessage("Running Ahuja-Orlin Layered Network Algorithm");
 
@@ -1610,139 +1609,98 @@ void MainWindow::runAhujaOrlinLayeredNetworkAlgorithm(int startNode, int endNode
         return;
     }
 
-    // Initialize data structures
-    QVector<QVector<int>> capacity(numNodes, QVector<int>(numNodes, 0));
-    QVector<QVector<int>> flow(numNodes, QVector<int>(numNodes, 0));
-    QVector<QVector<bool>> originalEdges(numNodes, QVector<bool>(numNodes, false));
-
-    // Populate capacity matrix
-    for (const ArrowData& arrowData : arrowDataList) {
-        int startID = arrowData.nodeStartID - 1;
-        int endID = arrowData.nodeEndID - 1;
-        capacity[startID][endID] = arrowData.distance;
-        originalEdges[startID][endID] = true;
-    }
-
     int source = startNode - 1;
     int sink = endNode - 1;
     int maxFlow = 0;
 
+    // Inițializare matrici de capacitate și flux
+    QVector<QVector<int>> capacity(numNodes, QVector<int>(numNodes, 0));
+    QVector<QVector<int>> flow(numNodes, QVector<int>(numNodes, 0));
+    QVector<QVector<bool>> originalEdges(numNodes, QVector<bool>(numNodes, false));
+
+    for (const ArrowData& arrow : arrowDataList) {
+        int u = arrow.nodeStartID - 1;
+        int v = arrow.nodeEndID - 1;
+        capacity[u][v] = arrow.distance;
+        originalEdges[u][v] = true;
+    }
+
     while (true) {
-        // Build layered network using BFS
+        // === BFS pentru stratificare (level graph) ===
         QVector<int> level(numNodes, -1);
         QQueue<int> queue;
-
-        queue.enqueue(source);
         level[source] = 0;
+        queue.enqueue(source);
 
-        bool sinkReached = false;
-        while (!queue.isEmpty() && !sinkReached) {
-            int currentNode = queue.dequeue();
-
-            for (int neighbor = 0; neighbor < numNodes; ++neighbor) {
-                if (level[neighbor] == -1 && capacity[currentNode][neighbor] - flow[currentNode][neighbor] > 0) {
-                    level[neighbor] = level[currentNode] + 1;
-                    queue.enqueue(neighbor);
-
-                    if (neighbor == sink) {
-                        sinkReached = true;
-                    }
+        while (!queue.isEmpty()) {
+            int u = queue.dequeue();
+            for (int v = 0; v < numNodes; ++v) {
+                if (level[v] == -1 && capacity[u][v] - flow[u][v] > 0) {
+                    level[v] = level[u] + 1;
+                    queue.enqueue(v);
                 }
             }
         }
 
-        if (level[sink] == -1) break; // No more augmenting paths
+        if (level[sink] == -1) break;  // Nu mai există cale de augmentare
 
-        // Find blocking flow in the layered network
-        QVector<int> ptr(numNodes, 0);
-        while (true) {
-            QStack<int> stack;
-            stack.push(source);
+        QVector<int> ptr(numNodes, 0);  // pointer pentru DFS
 
-            bool pathFound = false;
-            while (!stack.isEmpty() && !pathFound) {
-                int currentNode = stack.top();
+        // === DFS pentru a găsi și aplica fluxuri ===
+        std::function<int(int, int)> dfs = [&](int u, int pushed) -> int {
+            if (u == sink || pushed == 0) return pushed;
 
-                if (currentNode == sink) {
-                    pathFound = true;
-                    break;
-                }
-
-                while (ptr[currentNode] < numNodes) {
-                    int neighbor = ptr[currentNode]++;
-                    if (level[neighbor] == level[currentNode] + 1 &&
-                        capacity[currentNode][neighbor] - flow[currentNode][neighbor] > 0) {
-                        stack.push(neighbor);
-                        break;
+            for (int& i = ptr[u]; i < numNodes; ++i) {
+                int v = i;
+                if (level[v] == level[u] + 1 && capacity[u][v] - flow[u][v] > 0) {
+                    int tr = dfs(v, qMin(pushed, capacity[u][v] - flow[u][v]));
+                    if (tr > 0) {
+                        flow[u][v] += tr;
+                        flow[v][u] -= tr;
+                        return tr;
                     }
                 }
-
-                if (ptr[currentNode] == numNodes) {
-                    stack.pop();
-                    if (!stack.isEmpty()) {
-                        ptr[stack.top()] = 0;
-                    }
-                    break;
-                }
             }
+            return 0;
+        };
 
-            if (!pathFound) break;
-
-            // Find minimum residual capacity in the path
-            int pathFlow = INT_MAX;
-            for (int i = 0; i < stack.size() - 1; ++i) {
-                int u = stack[i];
-                int v = stack[i+1];
-                pathFlow = qMin(pathFlow, capacity[u][v] - flow[u][v]);
-            }
-
-            // Update flows
-            for (int i = 0; i < stack.size() - 1; ++i) {
-                int u = stack[i];
-                int v = stack[i+1];
-                flow[u][v] += pathFlow;
-                flow[v][u] -= pathFlow;
-            }
-
-            maxFlow += pathFlow;
+        while (int pushed = dfs(source, INT_MAX)) {
+            maxFlow += pushed;
         }
     }
 
-    // Prepare results for visualization
+    // === Pregătire rezultate pentru afișare ===
     QList<EdgeAnalysis> edgeAnalyses;
-    for (int i = 0; i < numNodes; ++i) {
-        for (int j = 0; j < numNodes; ++j) {
-            if (originalEdges[i][j] || flow[i][j] != 0) {
-                EdgeAnalysis analysis;
-                analysis.from = i + 1;
-                analysis.to = j + 1;
-                analysis.capacity = originalEdges[i][j] ? capacity[i][j] : 0;
-                analysis.flow = flow[i][j];
-                analysis.residual = originalEdges[i][j] ? capacity[i][j] - flow[i][j] : flow[j][i];
+    for (int u = 0; u < numNodes; ++u) {
+        for (int v = 0; v < numNodes; ++v) {
+            if (originalEdges[u][v] || flow[u][v] != 0) {
+                EdgeAnalysis edge;
+                edge.from = u + 1;
+                edge.to = v + 1;
+                edge.capacity = originalEdges[u][v] ? capacity[u][v] : 0;
+                edge.flow = flow[u][v];
+                edge.residual = originalEdges[u][v]
+                                    ? capacity[u][v] - flow[u][v]
+                                    : flow[v][u];
 
-                if (originalEdges[i][j]) {
-                    if (flow[i][j] < capacity[i][j]) {
-                        analysis.type = "Non-full forward edge";
-                    } else {
-                        analysis.type = "Saturated edge";
-                    }
+                if (originalEdges[u][v]) {
+                    edge.type = (edge.flow == edge.capacity) ? "Saturated edge" : "Non-full forward edge";
+                } else if (flow[v][u] > 0) {
+                    edge.type = "Non-empty backward edge";
                 } else {
-                    if (flow[j][i] > 0) {
-                        analysis.type = "Non-empty backward edge";
-                    } else {
-                        analysis.type = "Residual only";
-                    }
+                    edge.type = "Residual only";
                 }
 
-                edgeAnalyses.append(analysis);
+                edgeAnalyses.append(edge);
             }
         }
     }
 
-    // Show results
     showAhujaOrlinLayeredNetworkResults(startNode, endNode, maxFlow, edgeAnalyses);
     highlightResidualGraph(flow, capacity, originalEdges, startNode, endNode);
 }
+
+
 
 // Implementation of Gabow Scaling Algorithm
 void MainWindow::runGabowScalingAlgorithm(int startNode, int endNode) {
@@ -2187,8 +2145,7 @@ void MainWindow::showAhujaOrlinShortestPathResults(int startNodeId, int endNodeI
     delete resultsDialog;
 }
 
-void MainWindow::showAhujaOrlinLayeredNetworkResults(int startNodeId, int endNodeId, int maxFlow, const QList<EdgeAnalysis>& edgeAnalyses)
-{
+void MainWindow::showAhujaOrlinLayeredNetworkResults(int startNodeId, int endNodeId, int maxFlow, const QList<EdgeAnalysis>& edgeAnalyses) {
     QDialog *resultsDialog = new QDialog(this);
     resultsDialog->setWindowTitle("Ahuja-Orlin Layered Network Algorithm Results");
     QVBoxLayout *layout = new QVBoxLayout(resultsDialog);
@@ -2199,26 +2156,36 @@ void MainWindow::showAhujaOrlinLayeredNetworkResults(int startNodeId, int endNod
     content += QString("Start Node: %1\nEnd Node: %2\n").arg(startNodeId).arg(endNodeId);
     content += QString("Maximum Flow: %1\n\n").arg(maxFlow);
     content += "Edge Analysis:\n";
+
     if (edgeAnalyses.isEmpty()) {
         content += "No edge analysis data available.\n";
+        resultsText->setText(content);
+        layout->addWidget(resultsText);
     } else {
         QTableWidget *edgeTable = new QTableWidget(edgeAnalyses.size(), 6, resultsDialog);
         edgeTable->setHorizontalHeaderLabels({"From", "To", "Capacity", "Flow", "Residual", "Type"});
         for (int i = 0; i < edgeAnalyses.size(); ++i) {
             const EdgeAnalysis& edge = edgeAnalyses[i];
-            edgeTable->setItem(i, 0, new QTableWidgetItem(QString::number(edge.from)));
-            edgeTable->setItem(i, 1, new QTableWidgetItem(QString::number(edge.to)));
-            edgeTable->setItem(i, 2, new QTableWidgetItem(QString::number(edge.capacity)));
-            edgeTable->setItem(i, 3, new QTableWidgetItem(QString::number(edge.flow)));
-            edgeTable->setItem(i, 4, new QTableWidgetItem(QString::number(edge.residual)));
-            edgeTable->setItem(i, 5, new QTableWidgetItem(edge.type));
+            QTableWidgetItem *fromItem = new QTableWidgetItem(QString::number(edge.from));
+            QTableWidgetItem *toItem = new QTableWidgetItem(QString::number(edge.to));
+            QTableWidgetItem *capacityItem = new QTableWidgetItem(QString::number(edge.capacity));
+            QTableWidgetItem *flowItem = new QTableWidgetItem(QString::number(edge.flow));
+            QTableWidgetItem *residualItem = new QTableWidgetItem(QString::number(edge.residual));
+            QTableWidgetItem *typeItem = new QTableWidgetItem(edge.type);
+
+            edgeTable->setItem(i, 0, fromItem);
+            edgeTable->setItem(i, 1, toItem);
+            edgeTable->setItem(i, 2, capacityItem);
+            edgeTable->setItem(i, 3, flowItem);
+            edgeTable->setItem(i, 4, residualItem);
+            edgeTable->setItem(i, 5, typeItem);
         }
         edgeTable->horizontalHeader()->setSectionResizeMode(QHeaderView::Stretch);
         layout->addWidget(edgeTable);
+        layout->addWidget(resultsText); // Add the text edit *after* the table
     }
-    resultsText->setText(content);
-    layout->addWidget(resultsText);
 
+    resultsText->setText(content);
     QPushButton *closeButton = new QPushButton("Close", resultsDialog);
     connect(closeButton, &QPushButton::clicked, resultsDialog, &QDialog::accept);
     layout->addWidget(closeButton);
@@ -2420,26 +2387,32 @@ void MainWindow::runPriorityPreflowAlgorithm(int startNode, int endNode) {
         return;
     }
 
-    // Initialize data structures
+    // 0-based indexing
+    int source = startNode - 1;
+    int sink = endNode - 1;
+
+    // Initialize matrices and vectors
     QVector<QVector<int>> capacity(numNodes, QVector<int>(numNodes, 0));
     QVector<QVector<int>> flow(numNodes, QVector<int>(numNodes, 0));
     QVector<QVector<bool>> originalEdges(numNodes, QVector<bool>(numNodes, false));
     QVector<int> height(numNodes, 0);
     QVector<int> excess(numNodes, 0);
-    std::priority_queue<ActiveNode> activeNodes; // Folosim std::priority_queue
 
-    // Populate capacity matrix
-    for (const ArrowData& arrowData : arrowDataList) {
-        int startID = arrowData.nodeStartID - 1;
-        int endID = arrowData.nodeEndID - 1;
-        capacity[startID][endID] = arrowData.distance;
-        originalEdges[startID][endID] = true;
+    // Priority queue with custom comparator: higher height = higher priority
+    auto cmp = [](const ActiveNode& a, const ActiveNode& b) {
+        return a.height < b.height;
+    };
+    std::priority_queue<ActiveNode, std::vector<ActiveNode>, decltype(cmp)> activeNodes(cmp);
+
+    // Fill capacity and edge presence
+    for (const ArrowData& arrow : arrowDataList) {
+        int u = arrow.nodeStartID - 1;
+        int v = arrow.nodeEndID - 1;
+        capacity[u][v] = arrow.distance;
+        originalEdges[u][v] = true;
     }
 
-    int source = startNode - 1;
-    int sink = endNode - 1;
-
-    // Initialize preflow
+    // Initialize preflow from source
     height[source] = numNodes;
     for (int v = 0; v < numNodes; ++v) {
         if (capacity[source][v] > 0) {
@@ -2447,19 +2420,55 @@ void MainWindow::runPriorityPreflowAlgorithm(int startNode, int endNode) {
             flow[v][source] = -flow[source][v];
             excess[v] = flow[source][v];
             if (v != sink) {
-                activeNodes.push({v, height[v]}); // Folosim push()
+                activeNodes.push({v, height[v]});
             }
         }
     }
 
     // Main loop
     while (!activeNodes.empty()) {
-        ActiveNode currentActive = activeNodes.top(); // Folosim top()
-        activeNodes.pop();                           // și pop()
-        int u = currentActive.nodeId;
+        ActiveNode current = activeNodes.top();
+        activeNodes.pop();
+        int u = current.nodeId;
 
-        // Try to push and relabel based on priority (height)
-        // ... (implementarea specifică a algoritmului Priority Preflow aici) ...
+        if (excess[u] == 0 || u == source || u == sink)
+            continue;
+
+        bool pushed = false;
+        for (int v = 0; v < numNodes; ++v) {
+            int residual = capacity[u][v] - flow[u][v];
+            if (residual > 0 && height[u] == height[v] + 1) {
+                int pushFlow = qMin(excess[u], residual);
+                flow[u][v] += pushFlow;
+                flow[v][u] -= pushFlow;
+                excess[u] -= pushFlow;
+                excess[v] += pushFlow;
+
+                logDebugMessage(QString("Pushed %1 from %2 to %3")
+                                    .arg(pushFlow).arg(u + 1).arg(v + 1));
+
+                if (v != source && v != sink && excess[v] == pushFlow) {
+                    activeNodes.push({v, height[v]});
+                }
+                if (excess[u] == 0) break;
+                pushed = true;
+            }
+        }
+
+        if (!pushed) {
+            // Relabel
+            int minHeight = INT_MAX;
+            for (int v = 0; v < numNodes; ++v) {
+                if (capacity[u][v] - flow[u][v] > 0) {
+                    minHeight = qMin(minHeight, height[v]);
+                }
+            }
+            if (minHeight < INT_MAX) {
+                height[u] = minHeight + 1;
+                logDebugMessage(QString("Relabel node %1 to height %2").arg(u + 1).arg(height[u]));
+                activeNodes.push({u, height[u]});
+            }
+        }
     }
 
     // Calculate max flow
@@ -2468,24 +2477,37 @@ void MainWindow::runPriorityPreflowAlgorithm(int startNode, int endNode) {
         maxFlow += flow[source][v];
     }
 
-    // Prepare results for visualization
+    // Prepare results
     QList<EdgeAnalysis> edgeAnalyses;
-    for (int i = 0; i < numNodes; ++i) {
-        for (int j = 0; j < numNodes; ++j) {
-            if (originalEdges[i][j] || flow[i][j] != 0) {
-                EdgeAnalysis analysis;
-                analysis.from = i + 1;
-                analysis.to = j + 1;
-                analysis.capacity = originalEdges[i][j] ? capacity[i][j] : 0;
-                analysis.flow = flow[i][j];
-                analysis.residual = originalEdges[i][j] ? capacity[i][j] - flow[i][j] : flow[j][i];
-                // ... (setarea tipului muchiei) ...
-                edgeAnalyses.append(analysis);
+    for (int u = 0; u < numNodes; ++u) {
+        for (int v = 0; v < numNodes; ++v) {
+            if (originalEdges[u][v] || flow[u][v] != 0) {
+                EdgeAnalysis ea;
+                ea.from = u + 1;
+                ea.to = v + 1;
+                ea.capacity = originalEdges[u][v] ? capacity[u][v] : 0;
+                ea.flow = flow[u][v];
+                ea.residual = originalEdges[u][v]
+                                  ? capacity[u][v] - flow[u][v]
+                                  : qAbs(flow[v][u]);
+
+                if (originalEdges[u][v]) {
+                    if (ea.flow == ea.capacity)
+                        ea.type = "saturated";
+                    else if (ea.flow > 0)
+                        ea.type = "forward";
+                    else
+                        ea.type = "unsaturated";
+                } else {
+                    ea.type = "backward";
+                }
+
+                edgeAnalyses.append(ea);
             }
         }
     }
 
-    // Show results
+    // Display results
     showPriorityPreflowResults(startNode, endNode, maxFlow, edgeAnalyses);
     highlightResidualGraph(flow, capacity, originalEdges, startNode, endNode);
 }
@@ -2569,116 +2591,131 @@ void MainWindow::runAhujaExcessScalingAlgorithm(int startNode, int endNode) {
         return;
     }
 
-    // Initialize data structures
-    QVector<QVector<int>> capacity(numNodes, QVector<int>(numNodes, 0));
-    QVector<QVector<int>> flow(numNodes, QVector<int>(numNodes, 0));
-    QVector<QVector<bool>> originalEdges(numNodes, QVector<bool>(numNodes, false));
-    QVector<int> height(numNodes, 0);
-    QVector<int> excess(numNodes, 0);
-    QQueue<int> activeNodes; // Poate fi înlocuit cu o structură mai complexă pentru scalare
-
-    // Populate capacity matrix
-    for (const ArrowData& arrowData : arrowDataList) {
-        int startID = arrowData.nodeStartID - 1;
-        int endID = arrowData.nodeEndID - 1;
-        capacity[startID][endID] = arrowData.distance;
-        originalEdges[startID][endID] = true;
-    }
-
+    // Convert 1-based to 0-based
     int source = startNode - 1;
     int sink = endNode - 1;
 
-    // Initialize preflow
+    // Initialize structures
+    QVector<QVector<int>> capacity(numNodes, QVector<int>(numNodes, 0));
+    QVector<QVector<int>> flow(numNodes, QVector<int>(numNodes, 0));
+    QVector<QVector<bool>> originalEdges(numNodes, QVector<bool>(numNodes, false));
+
+    // Fill capacity matrix from arrow data
+    for (const ArrowData &arrow : arrowDataList) {
+        int u = arrow.nodeStartID - 1;
+        int v = arrow.nodeEndID - 1;
+        capacity[u][v] = arrow.distance;
+        originalEdges[u][v] = true;
+    }
+
+    QVector<int> height(numNodes, 0);
+    QVector<int> excess(numNodes, 0);
+    QQueue<int> activeNodes;
+
+    // Initialize preflow from source
     height[source] = numNodes;
     for (int v = 0; v < numNodes; ++v) {
         if (capacity[source][v] > 0) {
             flow[source][v] = capacity[source][v];
             flow[v][source] = -flow[source][v];
             excess[v] = flow[source][v];
-            if (v != sink) {
-                activeNodes.enqueue(v);
-            }
+            if (v != sink) activeNodes.enqueue(v);
         }
     }
 
-    int maxExcess = 0;
-    for (int e : excess) {
-        if (e > maxExcess) {
-            maxExcess = e;
-        }
-    }
+    // Get initial scaling parameter
+    int maxExcess = *std::max_element(excess.begin(), excess.end());
+    for (int delta = 1 << (31 - __builtin_clz(maxExcess)); delta > 0; delta /= 2) {
+        logDebugMessage(QString("Delta = %1").arg(delta));
 
-    // Main loop with scaling parameter delta
-    for (int delta = maxExcess; delta >= 1; delta /= 2) {
-        logDebugMessage(QString("Scaling phase with delta = %1").arg(delta));
-        // Loop through all nodes
-        for (int u = 0; u < numNodes; ++u) {
-            if (excess[u] > 0 && u != source && u != sink) {
-                activeNodes.enqueue(u);
+        QQueue<int> scalingActiveNodes;
+        for (int i = 0; i < numNodes; ++i) {
+            if (i != source && i != sink && excess[i] >= delta) {
+                scalingActiveNodes.enqueue(i);
             }
         }
 
-        while (!activeNodes.isEmpty()) {
-            int u = activeNodes.dequeue();
-            if (excess[u] > 0) { //verificam inca o data daca mai are exces
-                bool pushed = false;
-                // Attempt to push flow to a neighbor
+        while (!scalingActiveNodes.isEmpty()) {
+            int u = scalingActiveNodes.dequeue();
+            bool pushed = false;
+
+            for (int v = 0; v < numNodes; ++v) {
+                int residual = capacity[u][v] - flow[u][v];
+                if (residual >= delta && height[u] == height[v] + 1) {
+                    int pushFlow = qMin(excess[u], residual);
+                    flow[u][v] += pushFlow;
+                    flow[v][u] -= pushFlow;
+                    excess[u] -= pushFlow;
+                    excess[v] += pushFlow;
+                    pushed = true;
+
+                    if (v != source && v != sink && excess[v] >= delta) {
+                        scalingActiveNodes.enqueue(v);
+                    }
+
+                    logDebugMessage(QString("Pushed %1 from %2 to %3")
+                                        .arg(pushFlow).arg(u + 1).arg(v + 1));
+
+                    if (excess[u] < delta) break;
+                }
+            }
+
+            if (!pushed) {
+                int minHeight = INT_MAX;
                 for (int v = 0; v < numNodes; ++v) {
-                    if (capacity[u][v] - flow[u][v] > 0 && height[u] == height[v] + 1) {
-                        // Calculate the amount of flow to push
-                        int pushFlow = qMin(excess[u], capacity[u][v] - flow[u][v]);
-                        if(pushFlow >= delta){ //verificam conditia de scalare
-                            flow[u][v] += pushFlow;
-                            flow[v][u] -= pushFlow;
-                            excess[u] -= pushFlow;
-                            excess[v] += pushFlow;
-                            pushed = true;
-
-                            logDebugMessage(QString("Pushed %1 from %2 to %3").arg(pushFlow).arg(u+1).arg(v+1));
-                            if (v != source && v != sink && excess[v] > 0) {
-                                activeNodes.enqueue(v);
-                            }
-                            if (excess[u] == 0) break; // Done pushing from u
-                        }
+                    if (capacity[u][v] - flow[u][v] >= delta) {
+                        minHeight = qMin(minHeight, height[v]);
                     }
                 }
-                if (!pushed) {
-                    // Relabel u
-                    height[u] = height[u] + 1;
-                    logDebugMessage(QString("Relabeling node %1 to height %2").arg(u+1).arg(height[u]));
-                    activeNodes.enqueue(u);
+                if (minHeight < INT_MAX) {
+                    height[u] = minHeight + 1;
+                    scalingActiveNodes.enqueue(u);
+                    logDebugMessage(QString("Relabel node %1 to height %2").arg(u + 1).arg(height[u]));
                 }
             }
         }
     }
 
-    // Calculate max flow
+    // Compute total flow out of source
     int maxFlow = 0;
     for (int v = 0; v < numNodes; ++v) {
         maxFlow += flow[source][v];
     }
 
-    // Prepare results for visualization
+    // Prepare edge analysis results
     QList<EdgeAnalysis> edgeAnalyses;
-    for (int i = 0; i < numNodes; ++i) {
-        for (int j = 0; j < numNodes; ++j) {
-            if (originalEdges[i][j] || flow[i][j] != 0) {
-                EdgeAnalysis analysis;
-                analysis.from = i + 1;
-                analysis.to = j + 1;
-                analysis.capacity = originalEdges[i][j] ? capacity[i][j] : 0;
-                analysis.flow = flow[i][j];
-                analysis.residual = originalEdges[i][j] ? capacity[i][j] - flow[i][j] : flow[j][i];
-                // ... (setarea tipului muchiei) ...
-                edgeAnalyses.append(analysis);
+    for (int u = 0; u < numNodes; ++u) {
+        for (int v = 0; v < numNodes; ++v) {
+            if (originalEdges[u][v] || flow[u][v] > 0) {
+                EdgeAnalysis ea;
+                ea.from = u + 1;
+                ea.to = v + 1;
+                ea.capacity = capacity[u][v];
+                ea.flow = flow[u][v];
+                ea.residual = capacity[u][v] - flow[u][v];
+
+                if (originalEdges[u][v]) {
+                    if (ea.flow == ea.capacity)
+                        ea.type = "saturated";
+                    else if (ea.flow > 0)
+                        ea.type = "forward";
+                    else
+                        ea.type = "unsaturated";
+                } else {
+                    ea.type = "backward";
+                }
+
+                edgeAnalyses.append(ea);
             }
         }
     }
 
-    // Show results
     showAhujaExcessScalingResults(startNode, endNode, maxFlow, edgeAnalyses);
     highlightResidualGraph(flow, capacity, originalEdges, startNode, endNode);
 }
+
+
+
 
 
 
