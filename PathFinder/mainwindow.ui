@@ -213,6 +213,16 @@
         <string>FIFO Preflow</string>
        </property>
       </item>
+      <item>
+       <property name="text">
+        <string>Priority Preflow</string>
+       </property>
+      </item>
+      <item>
+       <property name="text">
+        <string>Ahuja Excess Scaling</string>
+       </property>
+      </item>
      </widget>
     </widget>
    </widget>
@@ -243,3 +253,4 @@
  <resources/>
  <connections/>
 </ui>
+

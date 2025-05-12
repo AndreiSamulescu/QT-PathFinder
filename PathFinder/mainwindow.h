@@ -119,6 +119,10 @@ private:
                                 int startNode, int endNode);
     void highlightEdge(int from, int to, const QColor& color, int value, const QString& label);
     void highlightNode(int nodeId, const QColor& color);
+    void runPriorityPreflowAlgorithm(int startNode, int endNode);
+    void runAhujaExcessScalingAlgorithm(int startNode, int endNode);
+    void showPriorityPreflowResults(int startNodeId, int endNodeId, int maxFlow, const QList<EdgeAnalysis>& edgeAnalyses);
+    void showAhujaExcessScalingResults(int startNodeId, int endNodeId, int maxFlow, const QList<EdgeAnalysis>& edgeAnalyses);
 
 };
 

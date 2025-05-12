@@ -19,6 +19,7 @@
 #include <QTableWidget>
 #include <QHeaderView>
 #include <QStack>
+#include <queue>
 
 MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent)
@@ -463,7 +464,15 @@ void MainWindow::runAlgorithm()
     else if (selectedAlgorithm == "FIFO Preflow") {
         runFIFOPreflowAlgorithm(from, to);
     }
+    else if (selectedAlgorithm == "Priority Preflow") {
+        runPriorityPreflowAlgorithm(from, to);
+    }
+    else if (selectedAlgorithm == "Ahuja Excess Scaling") {
+        runAhujaExcessScalingAlgorithm(from, to);
+    }
 }
+
+
 
 void MainWindow::runFordFulkersonAlgorithm(int startNode, int endNode) {
     logDebugMessage("Running Enhanced Ford-Fulkerson Algorithm");
@@ -2337,3 +2346,339 @@ void MainWindow::showFIFOPreflowResults(int startNodeId, int endNodeId, int maxF
     resultsDialog->exec();
     delete resultsDialog;
 }
+
+struct ActiveNode {
+    int nodeId;
+    int height;
+
+    bool operator<(const ActiveNode& other) const {
+        return height < other.height;
+    }
+};
+
+class PriorityQueueManual {
+private:
+    std::vector<ActiveNode> heap;
+
+    void heapifyUp(int i) {
+        while (i > 0 && heap[(i - 1) / 2] < heap[i]) {
+            std::swap(heap[i], heap[(i - 1) / 2]);
+            i = (i - 1) / 2;
+        }
+    }
+
+    void heapifyDown(int i) {
+        int left = 2 * i + 1;
+        int right = 2 * i + 2;
+        int largest = i;
+
+        if (left < heap.size() && heap[left] < heap[largest]) {
+            largest = left;
+        }
+
+        if (right < heap.size() && heap[right] < heap[largest]) {
+            largest = right;
+        }
+
+        if (largest != i) {
+            std::swap(heap[i], heap[largest]);
+            heapifyDown(largest);
+        }
+    }
+
+public:
+    bool isEmpty() const {
+        return heap.empty();
+    }
+
+    void push(const ActiveNode& node) {
+        heap.push_back(node);
+        heapifyUp(heap.size() - 1);
+    }
+
+    ActiveNode top() const {
+        return heap.front();
+    }
+
+    void pop() {
+        if (!heap.empty()) {
+            std::swap(heap[0], heap.back());
+            heap.pop_back();
+            heapifyDown(0);
+        }
+    }
+};
+
+
+
+void MainWindow::runPriorityPreflowAlgorithm(int startNode, int endNode) {
+    logDebugMessage("Running Priority Preflow Algorithm");
+
+    int numNodes = arrowNodes.size();
+    if (startNode < 1 || endNode < 1 || startNode > numNodes || endNode > numNodes) {
+        showWarning("Invalid start or end node");
+        return;
+    }
+
+    // Initialize data structures
+    QVector<QVector<int>> capacity(numNodes, QVector<int>(numNodes, 0));
+    QVector<QVector<int>> flow(numNodes, QVector<int>(numNodes, 0));
+    QVector<QVector<bool>> originalEdges(numNodes, QVector<bool>(numNodes, false));
+    QVector<int> height(numNodes, 0);
+    QVector<int> excess(numNodes, 0);
+    std::priority_queue<ActiveNode> activeNodes; // Folosim std::priority_queue
+
+    // Populate capacity matrix
+    for (const ArrowData& arrowData : arrowDataList) {
+        int startID = arrowData.nodeStartID - 1;
+        int endID = arrowData.nodeEndID - 1;
+        capacity[startID][endID] = arrowData.distance;
+        originalEdges[startID][endID] = true;
+    }
+
+    int source = startNode - 1;
+    int sink = endNode - 1;
+
+    // Initialize preflow
+    height[source] = numNodes;
+    for (int v = 0; v < numNodes; ++v) {
+        if (capacity[source][v] > 0) {
+            flow[source][v] = capacity[source][v];
+            flow[v][source] = -flow[source][v];
+            excess[v] = flow[source][v];
+            if (v != sink) {
+                activeNodes.push({v, height[v]}); // Folosim push()
+            }
+        }
+    }
+
+    // Main loop
+    while (!activeNodes.empty()) {
+        ActiveNode currentActive = activeNodes.top(); // Folosim top()
+        activeNodes.pop();                           // și pop()
+        int u = currentActive.nodeId;
+
+        // Try to push and relabel based on priority (height)
+        // ... (implementarea specifică a algoritmului Priority Preflow aici) ...
+    }
+
+    // Calculate max flow
+    int maxFlow = 0;
+    for (int v = 0; v < numNodes; ++v) {
+        maxFlow += flow[source][v];
+    }
+
+    // Prepare results for visualization
+    QList<EdgeAnalysis> edgeAnalyses;
+    for (int i = 0; i < numNodes; ++i) {
+        for (int j = 0; j < numNodes; ++j) {
+            if (originalEdges[i][j] || flow[i][j] != 0) {
+                EdgeAnalysis analysis;
+                analysis.from = i + 1;
+                analysis.to = j + 1;
+                analysis.capacity = originalEdges[i][j] ? capacity[i][j] : 0;
+                analysis.flow = flow[i][j];
+                analysis.residual = originalEdges[i][j] ? capacity[i][j] - flow[i][j] : flow[j][i];
+                // ... (setarea tipului muchiei) ...
+                edgeAnalyses.append(analysis);
+            }
+        }
+    }
+
+    // Show results
+    showPriorityPreflowResults(startNode, endNode, maxFlow, edgeAnalyses);
+    highlightResidualGraph(flow, capacity, originalEdges, startNode, endNode);
+}
+
+void MainWindow::showPriorityPreflowResults(int startNodeId, int endNodeId, int maxFlow, const QList<EdgeAnalysis>& edgeAnalyses) {
+    QDialog dialog(this);
+    dialog.setWindowTitle("Priority Preflow Algorithm Results");
+    dialog.setModal(true);
+
+    QVBoxLayout *layout = new QVBoxLayout(&dialog);
+    QLabel *infoLabel = new QLabel(QString("Start Node: %1\nEnd Node: %2\nMax Flow: %3")
+                                       .arg(startNodeId).arg(endNodeId).arg(maxFlow));
+    layout->addWidget(infoLabel);
+
+    QTableWidget *edgeTable = new QTableWidget();
+    edgeTable->setColumnCount(6);
+    edgeTable->setHorizontalHeaderLabels({"From", "To", "Capacity", "Flow", "Residual", "Type"});
+    edgeTable->setRowCount(edgeAnalyses.size());
+
+    for (int i = 0; i < edgeAnalyses.size(); ++i) {
+        const EdgeAnalysis& analysis = edgeAnalyses[i];
+        edgeTable->setItem(i, 0, new QTableWidgetItem(QString::number(analysis.from)));
+        edgeTable->setItem(i, 1, new QTableWidgetItem(QString::number(analysis.to)));
+        edgeTable->setItem(i, 2, new QTableWidgetItem(QString::number(analysis.capacity)));
+        edgeTable->setItem(i, 3, new QTableWidgetItem(QString::number(analysis.flow)));
+        edgeTable->setItem(i, 4, new QTableWidgetItem(QString::number(analysis.residual)));
+        edgeTable->setItem(i, 5, new QTableWidgetItem(analysis.type));
+    }
+
+    edgeTable->resizeColumnsToContents();
+    layout->addWidget(edgeTable);
+
+    QDialogButtonBox *buttonBox = new QDialogButtonBox(QDialogButtonBox::Ok);
+    connect(buttonBox, &QDialogButtonBox::accepted, &dialog, &QDialog::accept);
+    layout->addWidget(buttonBox);
+
+    dialog.exec();
+}
+
+void MainWindow::showAhujaExcessScalingResults(int startNodeId, int endNodeId, int maxFlow, const QList<EdgeAnalysis>& edgeAnalyses) {
+    QDialog dialog(this);
+    dialog.setWindowTitle("Ahuja-Orlin Excess Scaling Results");
+    dialog.setModal(true);
+
+    QVBoxLayout *layout = new QVBoxLayout(&dialog);
+    QLabel *infoLabel = new QLabel(QString("Start Node: %1\nEnd Node: %2\nMax Flow: %3")
+                                       .arg(startNodeId).arg(endNodeId).arg(maxFlow));
+    layout->addWidget(infoLabel);
+
+    QTableWidget *edgeTable = new QTableWidget();
+    edgeTable->setColumnCount(6);
+    edgeTable->setHorizontalHeaderLabels({"From", "To", "Capacity", "Flow", "Residual", "Type"});
+    edgeTable->setRowCount(edgeAnalyses.size());
+
+    for (int i = 0; i < edgeAnalyses.size(); ++i) {
+        const EdgeAnalysis& analysis = edgeAnalyses[i];
+        edgeTable->setItem(i, 0, new QTableWidgetItem(QString::number(analysis.from)));
+        edgeTable->setItem(i, 1, new QTableWidgetItem(QString::number(analysis.to)));
+        edgeTable->setItem(i, 2, new QTableWidgetItem(QString::number(analysis.capacity)));
+        edgeTable->setItem(i, 3, new QTableWidgetItem(QString::number(analysis.flow)));
+        edgeTable->setItem(i, 4, new QTableWidgetItem(QString::number(analysis.residual)));
+        edgeTable->setItem(i, 5, new QTableWidgetItem(analysis.type));
+    }
+
+    edgeTable->resizeColumnsToContents();
+    layout->addWidget(edgeTable);
+
+    QDialogButtonBox *buttonBox = new QDialogButtonBox(QDialogButtonBox::Ok);
+    connect(buttonBox, &QDialogButtonBox::accepted, &dialog, &QDialog::accept);
+    layout->addWidget(buttonBox);
+
+    dialog.exec();
+}
+
+void MainWindow::runAhujaExcessScalingAlgorithm(int startNode, int endNode) {
+    logDebugMessage("Running Ahuja-Orlin Excess Scaling Algorithm");
+
+    int numNodes = arrowNodes.size();
+    if (startNode < 1 || endNode < 1 || startNode > numNodes || endNode > numNodes) {
+        showWarning("Invalid start or end node");
+        return;
+    }
+
+    // Initialize data structures
+    QVector<QVector<int>> capacity(numNodes, QVector<int>(numNodes, 0));
+    QVector<QVector<int>> flow(numNodes, QVector<int>(numNodes, 0));
+    QVector<QVector<bool>> originalEdges(numNodes, QVector<bool>(numNodes, false));
+    QVector<int> height(numNodes, 0);
+    QVector<int> excess(numNodes, 0);
+    QQueue<int> activeNodes; // Poate fi înlocuit cu o structură mai complexă pentru scalare
+
+    // Populate capacity matrix
+    for (const ArrowData& arrowData : arrowDataList) {
+        int startID = arrowData.nodeStartID - 1;
+        int endID = arrowData.nodeEndID - 1;
+        capacity[startID][endID] = arrowData.distance;
+        originalEdges[startID][endID] = true;
+    }
+
+    int source = startNode - 1;
+    int sink = endNode - 1;
+
+    // Initialize preflow
+    height[source] = numNodes;
+    for (int v = 0; v < numNodes; ++v) {
+        if (capacity[source][v] > 0) {
+            flow[source][v] = capacity[source][v];
+            flow[v][source] = -flow[source][v];
+            excess[v] = flow[source][v];
+            if (v != sink) {
+                activeNodes.enqueue(v);
+            }
+        }
+    }
+
+    int maxExcess = 0;
+    for (int e : excess) {
+        if (e > maxExcess) {
+            maxExcess = e;
+        }
+    }
+
+    // Main loop with scaling parameter delta
+    for (int delta = maxExcess; delta >= 1; delta /= 2) {
+        logDebugMessage(QString("Scaling phase with delta = %1").arg(delta));
+        // Loop through all nodes
+        for (int u = 0; u < numNodes; ++u) {
+            if (excess[u] > 0 && u != source && u != sink) {
+                activeNodes.enqueue(u);
+            }
+        }
+
+        while (!activeNodes.isEmpty()) {
+            int u = activeNodes.dequeue();
+            if (excess[u] > 0) { //verificam inca o data daca mai are exces
+                bool pushed = false;
+                // Attempt to push flow to a neighbor
+                for (int v = 0; v < numNodes; ++v) {
+                    if (capacity[u][v] - flow[u][v] > 0 && height[u] == height[v] + 1) {
+                        // Calculate the amount of flow to push
+                        int pushFlow = qMin(excess[u], capacity[u][v] - flow[u][v]);
+                        if(pushFlow >= delta){ //verificam conditia de scalare
+                            flow[u][v] += pushFlow;
+                            flow[v][u] -= pushFlow;
+                            excess[u] -= pushFlow;
+                            excess[v] += pushFlow;
+                            pushed = true;
+
+                            logDebugMessage(QString("Pushed %1 from %2 to %3").arg(pushFlow).arg(u+1).arg(v+1));
+                            if (v != source && v != sink && excess[v] > 0) {
+                                activeNodes.enqueue(v);
+                            }
+                            if (excess[u] == 0) break; // Done pushing from u
+                        }
+                    }
+                }
+                if (!pushed) {
+                    // Relabel u
+                    height[u] = height[u] + 1;
+                    logDebugMessage(QString("Relabeling node %1 to height %2").arg(u+1).arg(height[u]));
+                    activeNodes.enqueue(u);
+                }
+            }
+        }
+    }
+
+    // Calculate max flow
+    int maxFlow = 0;
+    for (int v = 0; v < numNodes; ++v) {
+        maxFlow += flow[source][v];
+    }
+
+    // Prepare results for visualization
+    QList<EdgeAnalysis> edgeAnalyses;
+    for (int i = 0; i < numNodes; ++i) {
+        for (int j = 0; j < numNodes; ++j) {
+            if (originalEdges[i][j] || flow[i][j] != 0) {
+                EdgeAnalysis analysis;
+                analysis.from = i + 1;
+                analysis.to = j + 1;
+                analysis.capacity = originalEdges[i][j] ? capacity[i][j] : 0;
+                analysis.flow = flow[i][j];
+                analysis.residual = originalEdges[i][j] ? capacity[i][j] - flow[i][j] : flow[j][i];
+                // ... (setarea tipului muchiei) ...
+                edgeAnalyses.append(analysis);
+            }
+        }
+    }
+
+    // Show results
+    showAhujaExcessScalingResults(startNode, endNode, maxFlow, edgeAnalyses);
+    highlightResidualGraph(flow, capacity, originalEdges, startNode, endNode);
+}
+
+
+
