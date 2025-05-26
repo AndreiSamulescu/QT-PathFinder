@@ -1702,9 +1702,8 @@ void MainWindow::runAhujaOrlinLayeredNetworkAlgorithm(int startNode, int endNode
 
 
 
-// Implementation of Gabow Scaling Algorithm
 void MainWindow::runGabowScalingAlgorithm(int startNode, int endNode) {
-    logDebugMessage("Running Gabow Scaling Algorithm");
+    logDebugMessage("Running Gabow Scaling Algorithm (BFS variant)");
 
     int numNodes = arrowNodes.size();
     if (startNode < 1 || endNode < 1 || startNode > numNodes || endNode > numNodes) {
@@ -1712,37 +1711,32 @@ void MainWindow::runGabowScalingAlgorithm(int startNode, int endNode) {
         return;
     }
 
-    // Initialize data structures
     QVector<QVector<int>> capacity(numNodes, QVector<int>(numNodes, 0));
     QVector<QVector<int>> flow(numNodes, QVector<int>(numNodes, 0));
     QVector<QVector<bool>> originalEdges(numNodes, QVector<bool>(numNodes, false));
 
-    // Populate capacity matrix
     for (const ArrowData& arrowData : arrowDataList) {
-        int startID = arrowData.nodeStartID - 1;
-        int endID = arrowData.nodeEndID - 1;
-        capacity[startID][endID] = arrowData.distance;
-        originalEdges[startID][endID] = true;
+        int u = arrowData.nodeStartID - 1;
+        int v = arrowData.nodeEndID - 1;
+        capacity[u][v] = arrowData.distance;
+        originalEdges[u][v] = true;
     }
 
     int source = startNode - 1;
     int sink = endNode - 1;
     int maxFlow = 0;
 
-    // Find maximum capacity for scaling
     int maxCapacity = 0;
-    for (int i = 0; i < numNodes; ++i) {
-        for (int j = 0; j < numNodes; ++j) {
-            if (capacity[i][j] > maxCapacity) {
-                maxCapacity = capacity[i][j];
-            }
-        }
-    }
+    for (const auto& row : capacity)
+        for (int cap : row)
+            maxCapacity = std::max(maxCapacity, cap);
 
-    // Scaling phases
-    for (int delta = 1; delta <= maxCapacity; delta *= 2) {
+    // Start with the largest power of 2 ≤ maxCapacity
+    int delta = 1;
+    while (delta * 2 <= maxCapacity) delta *= 2;
+
+    while (delta >= 1) {
         while (true) {
-            // BFS with delta scaling
             QVector<int> parent(numNodes, -1);
             QVector<bool> visited(numNodes, false);
             QQueue<int> queue;
@@ -1750,49 +1744,46 @@ void MainWindow::runGabowScalingAlgorithm(int startNode, int endNode) {
             visited[source] = true;
 
             bool pathFound = false;
-            while (!queue.isEmpty() && !pathFound) {
-                int currentNode = queue.dequeue();
-
-                for (int neighbor = 0; neighbor < numNodes; ++neighbor) {
-                    int residual = capacity[currentNode][neighbor] - flow[currentNode][neighbor];
-                    if (!visited[neighbor] && residual >= delta) {
-                        parent[neighbor] = currentNode;
-                        visited[neighbor] = true;
-                        queue.enqueue(neighbor);
-
-                        if (neighbor == sink) {
+            while (!queue.isEmpty()) {
+                int u = queue.dequeue();
+                for (int v = 0; v < numNodes; ++v) {
+                    int residual = capacity[u][v] - flow[u][v];
+                    if (!visited[v] && residual >= delta) {
+                        parent[v] = u;
+                        visited[v] = true;
+                        queue.enqueue(v);
+                        if (v == sink) {
                             pathFound = true;
                             break;
                         }
                     }
                 }
+                if (pathFound) break;
             }
 
             if (!pathFound) break;
 
-            // Reconstruct path and find minimum residual capacity
+            // Find minimum residual capacity along the path
             int pathFlow = INT_MAX;
-            int currentNode = sink;
-            while (currentNode != source) {
-                int prevNode = parent[currentNode];
-                pathFlow = qMin(pathFlow, capacity[prevNode][currentNode] - flow[prevNode][currentNode]);
-                currentNode = prevNode;
+            for (int v = sink; v != source; v = parent[v]) {
+                int u = parent[v];
+                pathFlow = qMin(pathFlow, capacity[u][v] - flow[u][v]);
             }
 
-            // Update flows
-            currentNode = sink;
-            while (currentNode != source) {
-                int prevNode = parent[currentNode];
-                flow[prevNode][currentNode] += pathFlow;
-                flow[currentNode][prevNode] -= pathFlow;
-                currentNode = prevNode;
+            // Update the flow
+            for (int v = sink; v != source; v = parent[v]) {
+                int u = parent[v];
+                flow[u][v] += pathFlow;
+                flow[v][u] -= pathFlow;
             }
 
             maxFlow += pathFlow;
         }
+
+        delta /= 2;
     }
 
-    // Prepare results for visualization
+    // Prepare results
     QList<EdgeAnalysis> edgeAnalyses;
     for (int i = 0; i < numNodes; ++i) {
         for (int j = 0; j < numNodes; ++j) {
@@ -1805,17 +1796,15 @@ void MainWindow::runGabowScalingAlgorithm(int startNode, int endNode) {
                 analysis.residual = originalEdges[i][j] ? capacity[i][j] - flow[i][j] : flow[j][i];
 
                 if (originalEdges[i][j]) {
-                    if (flow[i][j] < capacity[i][j]) {
+                    if (flow[i][j] < capacity[i][j])
                         analysis.type = "Non-full forward edge";
-                    } else {
+                    else
                         analysis.type = "Saturated edge";
-                    }
                 } else {
-                    if (flow[j][i] > 0) {
+                    if (flow[j][i] > 0)
                         analysis.type = "Non-empty backward edge";
-                    } else {
+                    else
                         analysis.type = "Residual only";
-                    }
                 }
 
                 edgeAnalyses.append(analysis);
@@ -1823,10 +1812,11 @@ void MainWindow::runGabowScalingAlgorithm(int startNode, int endNode) {
         }
     }
 
-    // Show results
     showGabowScalingResults(startNode, endNode, maxFlow, edgeAnalyses);
     highlightResidualGraph(flow, capacity, originalEdges, startNode, endNode);
 }
+
+
 
 // Implementation of Generic Preflow Algorithm
 void MainWindow::runGenericPreflowAlgorithm(int startNode, int endNode) {
